@@ -1,0 +1,173 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Enums
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+}
+
+enum InvoiceStatus {
+  PROCESSING
+  EXTRACTED
+  BACKED_UP
+  FAILED
+  PAID
+  PENDING
+  OVERDUE
+}
+
+// Models
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Supabase Auth ID
+  authId String @unique
+
+  // Relations
+  memberships OrganizationMember[]
+
+  @@index([authId])
+  @@index([email])
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Google Drive integration
+  driveRefreshToken String?  @db.Text
+  driveTokenExpiry  DateTime?
+
+  // Relations
+  members       OrganizationMember[]
+  invoices      Invoice[]
+  subscription  Subscription?
+  alertLogs     AlertLog[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id        String   @id @default(cuid())
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("organization_members")
+}
+
+model Invoice {
+  id        String        @id @default(cuid())
+  status    InvoiceStatus @default(PROCESSING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // File information
+  fileName String
+  fileUrl  String
+  fileSize Int?
+
+  // Google Drive backup
+  driveFileId String?
+
+  // Extracted data
+  supplier     String?
+  supplierNit  String?
+  issueDate    DateTime?
+  dueDate      DateTime?
+  subtotal     Float?
+  iva          Float?
+  total        Float?
+  description  String?      @db.Text
+  extractedData Json?       // Raw AI response
+
+  // Relations
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([issueDate])
+  @@index([dueDate])
+  @@index([status])
+  @@index([supplier])
+  @@map("invoices")
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  plan      SubscriptionPlan   @default(STARTER)
+  status    SubscriptionStatus @default(TRIALING)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  // Mercado Pago
+  mercadoPagoSubscriptionId String?  @unique
+  mercadoPagoCustomerId     String?
+
+  // Billing period
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+
+  // Relations
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+model AlertLog {
+  id        String   @id @default(cuid())
+  type      String   // 'due_date', 'extraction_failed', etc.
+  message   String   @db.Text
+  sentAt    DateTime @default(now())
+  metadata  Json?
+
+  // Relations
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([sentAt])
+  @@map("alert_logs")
+}
