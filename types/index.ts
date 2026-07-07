@@ -1,3 +1,10 @@
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number | null;
+  unitPrice: number | null;
+  total: number | null;
+}
+
 export interface InvoiceData {
   supplier: string;
   supplierNit: string;
@@ -7,6 +14,7 @@ export interface InvoiceData {
   iva: number;
   total: number;
   description: string;
+  items: InvoiceLineItem[];
 }
 
 export interface ExtractionResult {

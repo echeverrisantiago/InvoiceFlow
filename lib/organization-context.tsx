@@ -36,20 +36,11 @@ export function OrganizationProvider({
 }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabase = createClient(); // still needed for onAuthStateChange
 
   const fetchOrganization = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setOrganization(null);
-        setLoading(false);
-        return;
-      }
-
+      // Single fetch — avoids redundant supabase.auth.getUser() client call
       const response = await fetch('/api/organization/current');
       if (response.ok) {
         const data = await response.json();
@@ -67,15 +58,8 @@ export function OrganizationProvider({
 
   useEffect(() => {
     fetchOrganization();
-
-    // Listen for auth state changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      fetchOrganization();
-    });
-
-    return () => subscription.unsubscribe();
+    // onAuthStateChange removed — it was triggering re-fetches on every navigation
+    // refetch() is available manually when needed (e.g. after login/logout)
   }, []);
 
   return (

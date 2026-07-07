@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { cache } from 'react';
 
 export interface TenantContext {
   user: {
@@ -18,12 +19,12 @@ export interface TenantContext {
 
 /**
  * Validates that the user is authenticated and belongs to an organization.
- * Returns the tenant context with user and organization info.
+ * Cached per-request with React cache() — only executes once per request
+ * even if called multiple times (middleware, page, API route).
  */
-export async function getTenantContext(): Promise<TenantContext | null> {
+export const getTenantContext = cache(async (): Promise<TenantContext | null> => {
   const supabase = await createClient();
 
-  // Check authentication
   const {
     data: { user: authUser },
   } = await supabase.auth.getUser();
@@ -32,25 +33,18 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     return null;
   }
 
-  // Get user from database
   const user = await prisma.user.findUnique({
     where: { authId: authUser.id },
     include: {
       memberships: {
-        include: {
-          organization: true,
-        },
-        take: 1, // For MVP, we only support one organization per user
+        include: { organization: true },
+        take: 1,
       },
     },
   });
 
   if (!user || user.memberships.length === 0) {
-    // If the user is authenticated in Supabase but has no DB record,
-    // sign them out to prevent redirect loops (dashboard → login → dashboard...)
-    if (authUser) {
-      await supabase.auth.signOut();
-    }
+    await supabase.auth.signOut();
     return null;
   }
 
@@ -69,7 +63,7 @@ export async function getTenantContext(): Promise<TenantContext | null> {
       role: membership.role,
     },
   };
-}
+});
 
 /**
  * Wrapper for API routes that require tenant context.

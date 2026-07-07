@@ -26,7 +26,15 @@ const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de 
   "subtotal": monto subtotal (número sin símbolos),
   "iva": monto IVA (número sin símbolos),
   "total": monto total (número sin símbolos),
-  "description": "Descripción breve de los productos/servicios"
+  "description": "Descripción breve de los productos/servicios",
+  "items": [
+    {
+      "description": "Nombre del producto o servicio",
+      "quantity": cantidad numérica o null,
+      "unitPrice": precio unitario numérico o null,
+      "total": valor total de la línea numérico o null
+    }
+  ]
 }
 
 IMPORTANTE:
@@ -35,6 +43,8 @@ IMPORTANTE:
 - Montos deben ser números sin puntos, comas ni símbolos (ej: 150000 no 150.000)
 - NIT debe incluir dígito de verificación si está disponible
 - Si falta algún dato, usa null
+- Si hay varios productos o servicios, agrégalos en "items"
+- Si no puedes identificar la cantidad o precio unitario de un ítem, usa null pero conserva la descripción
 - Valida que subtotal + iva ≈ total (con tolerancia del 1%)
 
 Responde SOLO con el JSON, sin texto adicional.`;
@@ -112,6 +122,10 @@ export async function extractInvoiceData(
     }
 
     const data: InvoiceData = JSON.parse(jsonMatch[0]);
+
+    if (!Array.isArray(data.items)) {
+      data.items = [];
+    }
 
     // Validate data
     if (!data.supplier || !data.total) {

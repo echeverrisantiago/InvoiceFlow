@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, invoiceStatusLabels } from '@/lib/utils';
 import { FileText, TrendingUp, Users, AlertCircle } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -45,7 +45,8 @@ async function getDashboardData(organizationId: string) {
             gte: now,
             lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // Next 7 days
           },
-          status: { in: ['PENDING', 'EXTRACTED', 'BACKED_UP'] },
+          paymentStatus: 'PENDING',
+          status: { notIn: ['FAILED', 'PROCESSING'] },
         },
       }),
     ]);
@@ -89,6 +90,7 @@ async function getDashboardData(organizationId: string) {
       total: true,
       issueDate: true,
       status: true,
+      paymentStatus: true,
     },
   });
 
@@ -240,7 +242,9 @@ export default async function DashboardPage() {
                       {formatCurrency(invoice.total || 0)}
                     </p>
                     <p className="text-xs text-muted-foreground capitalize">
-                      {invoice.status.toLowerCase()}
+                      {invoice.status === 'PROCESSING' || invoice.status === 'FAILED'
+                        ? invoiceStatusLabels[invoice.status]
+                        : invoiceStatusLabels[invoice.paymentStatus]}
                     </p>
                   </div>
                 </div>

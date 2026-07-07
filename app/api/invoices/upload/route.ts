@@ -76,10 +76,12 @@ export async function POST(request: NextRequest) {
     const invoice = await prisma.invoice.create({
       data: {
         organizationId: context.organization.id,
+        uploadedById: context.user.id,
         fileName: file.name,
         fileUrl: urlData.publicUrl,
         fileSize: file.size,
         status: 'PROCESSING',
+        paymentStatus: 'PENDING',
       },
     });
 

@@ -37,6 +37,12 @@ enum InvoiceStatus {
   OVERDUE
 }
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
 // Models
 model User {
   id        String   @id @default(cuid())
@@ -49,7 +55,8 @@ model User {
   authId String @unique
 
   // Relations
-  memberships OrganizationMember[]
+  memberships      OrganizationMember[]
+  uploadedInvoices Invoice[]           @relation("InvoiceUploadedBy")
 
   @@index([authId])
   @@index([email])
@@ -94,10 +101,11 @@ model OrganizationMember {
 }
 
 model Invoice {
-  id        String        @id @default(cuid())
-  status    InvoiceStatus @default(PROCESSING)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  status        InvoiceStatus @default(PROCESSING)
+  paymentStatus PaymentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   // File information
   fileName String
@@ -108,24 +116,29 @@ model Invoice {
   driveFileId String?
 
   // Extracted data
-  supplier     String?
-  supplierNit  String?
-  issueDate    DateTime?
-  dueDate      DateTime?
-  subtotal     Float?
-  iva          Float?
-  total        Float?
-  description  String?      @db.Text
-  extractedData Json?       // Raw AI response
+  supplier      String?
+  supplierNit   String?
+  issueDate     DateTime?
+  dueDate       DateTime?
+  subtotal      Float?
+  iva           Float?
+  total         Float?
+  description   String? @db.Text
+  internalNotes String? @db.Text
+  invoiceItems  Json?
+  extractedData Json?   // Raw AI response
 
   // Relations
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedById   String?
+  uploadedBy     User?        @relation("InvoiceUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([issueDate])
   @@index([dueDate])
   @@index([status])
+  @@index([paymentStatus])
   @@index([supplier])
   @@map("invoices")
 }

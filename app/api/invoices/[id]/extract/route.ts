@@ -4,6 +4,16 @@ import { prisma } from '@/lib/prisma';
 import { extractInvoiceData } from '@/lib/ia';
 import { uploadToDrive } from '@/lib/drive';
 
+function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parsedDueDate = new Date(dueDate);
+  parsedDueDate.setHours(0, 0, 0, 0);
+
+  return parsedDueDate < today ? 'OVERDUE' : 'PENDING';
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,8 +79,12 @@ export async function POST(
         iva: extraction.data.iva,
         total: extraction.data.total,
         description: extraction.data.description,
+        invoiceItems: extraction.data.items,
         extractedData: extraction.rawResponse,
         status: 'EXTRACTED',
+        paymentStatus: getPaymentStatusFromDueDate(
+          new Date(extraction.data.dueDate)
+        ),
       },
     });
 

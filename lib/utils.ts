@@ -29,3 +29,34 @@ export function formatShortDate(date: Date | string): string {
     day: '2-digit',
   }).format(new Date(date));
 }
+
+export const invoiceStatusLabels = {
+  PROCESSING: 'Procesando',
+  EXTRACTED: 'Extraído',
+  BACKED_UP: 'Guardado',
+  FAILED: 'Error',
+  PAID: 'Pagado',
+  PENDING: 'Pendiente',
+  OVERDUE: 'Vencido',
+} as const;
+
+export const invoiceStatusColors = {
+  PROCESSING: 'bg-yellow-100 text-yellow-800',
+  EXTRACTED: 'bg-blue-100 text-blue-800',
+  BACKED_UP: 'bg-green-100 text-green-800',
+  FAILED: 'bg-red-100 text-red-800',
+  PAID: 'bg-gray-100 text-gray-800',
+  PENDING: 'bg-orange-100 text-orange-800',
+  OVERDUE: 'bg-red-100 text-red-800',
+} as const;
+
+export function toDateInputValue(date?: Date | string | null): string {
+  if (!date) return '';
+
+  const parsed = new Date(date);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}

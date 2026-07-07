@@ -12,8 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCurrency, formatShortDate } from '@/lib/utils';
-import { Upload, FileText } from 'lucide-react';
+import {
+  formatCurrency,
+  formatShortDate,
+  invoiceStatusColors,
+  invoiceStatusLabels,
+} from '@/lib/utils';
+import { Upload, FileText, Eye } from 'lucide-react';
 
 async function getInvoices(organizationId: string) {
   return await prisma.invoice.findMany({
@@ -31,30 +36,22 @@ async function getInvoices(organizationId: string) {
       dueDate: true,
       total: true,
       status: true,
+      paymentStatus: true,
       createdAt: true,
     },
   });
 }
 
-const statusColors = {
-  PROCESSING: 'bg-yellow-100 text-yellow-800',
-  EXTRACTED: 'bg-blue-100 text-blue-800',
-  BACKED_UP: 'bg-green-100 text-green-800',
-  FAILED: 'bg-red-100 text-red-800',
-  PAID: 'bg-gray-100 text-gray-800',
-  PENDING: 'bg-orange-100 text-orange-800',
-  OVERDUE: 'bg-red-100 text-red-800',
-};
+function getDisplayStatus(invoice: {
+  status: keyof typeof invoiceStatusLabels;
+  paymentStatus: 'PENDING' | 'PAID' | 'OVERDUE';
+}) {
+  if (invoice.status === 'PROCESSING' || invoice.status === 'FAILED') {
+    return invoice.status;
+  }
 
-const statusLabels = {
-  PROCESSING: 'Procesando',
-  EXTRACTED: 'Extraído',
-  BACKED_UP: 'Guardado',
-  FAILED: 'Error',
-  PAID: 'Pagado',
-  PENDING: 'Pendiente',
-  OVERDUE: 'Vencido',
-};
+  return invoice.paymentStatus;
+}
 
 export default async function InvoicesPage() {
   const context = await getTenantContext();
@@ -99,10 +96,14 @@ export default async function InvoicesPage() {
                   <TableHead>Vencimiento</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((invoice) => (
+                {invoices.map((invoice) => {
+                  const displayStatus = getDisplayStatus(invoice);
+
+                  return (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">
                       {invoice.supplier || 'Sin proveedor'}
@@ -123,15 +124,21 @@ export default async function InvoicesPage() {
                     </TableCell>
                     <TableCell>
                       <span
-                        className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                          statusColors[invoice.status]
-                        }`}
+                        className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${invoiceStatusColors[displayStatus]}`}
                       >
-                        {statusLabels[invoice.status]}
+                        {invoiceStatusLabels[displayStatus]}
                       </span>
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/dashboard/invoices/${invoice.id}`}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver detalle
+                        </Link>
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                ))}
+                )})}
               </TableBody>
             </Table>
           ) : (

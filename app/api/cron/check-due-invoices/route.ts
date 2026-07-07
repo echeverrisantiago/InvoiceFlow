@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
           gte: now,
           lte: threeDaysFromNow,
         },
+        paymentStatus: 'PENDING',
         status: {
-          in: ['PENDING', 'EXTRACTED', 'BACKED_UP'],
+          notIn: ['FAILED', 'PROCESSING'],
         },
       },
       include: {
@@ -147,3 +148,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
