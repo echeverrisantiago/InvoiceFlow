@@ -43,6 +43,11 @@ enum PaymentStatus {
   OVERDUE
 }
 
+enum InvoiceSource {
+  MANUAL
+  EMAIL
+}
+
 // Models
 model User {
   id        String   @id @default(cuid())
@@ -78,6 +83,7 @@ model Organization {
   invoices      Invoice[]
   subscription  Subscription?
   alertLogs     AlertLog[]
+  emailAccounts EmailAccount[]
 
   @@map("organizations")
 }
@@ -102,6 +108,7 @@ model OrganizationMember {
 
 model Invoice {
   id            String        @id @default(cuid())
+  source        InvoiceSource @default(MANUAL)
   status        InvoiceStatus @default(PROCESSING)
   paymentStatus PaymentStatus @default(PENDING)
   createdAt     DateTime      @default(now())
@@ -141,6 +148,28 @@ model Invoice {
   @@index([paymentStatus])
   @@index([supplier])
   @@map("invoices")
+}
+
+model EmailAccount {
+  id             String   @id @default(cuid())
+  email          String
+  imapHost       String
+  imapPort       Int      @default(993)
+  imapUsername   String
+  imapPassword   String   @db.Text
+  useTls         Boolean  @default(true)
+  isActive       Boolean  @default(true)
+  lastCheckedAt  DateTime?
+  lastEmailUid   BigInt?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("email_accounts")
 }
 
 model Subscription {

@@ -13,6 +13,7 @@ export const config = {
     '/api/invoices/:path*',
     '/api/subscriptions/:path*',
     '/api/organization/:path*',
+    '/api/email-accounts/:path*',
     '/api/cron/:path*',
   ],
 };

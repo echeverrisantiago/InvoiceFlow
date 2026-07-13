@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Link as LinkIcon } from 'lucide-react';
 import { getAuthUrl } from '@/lib/drive';
+import { EmailAccountsForm } from '@/components/email-accounts-form';
 import Link from 'next/link';
 
 async function getSettings(organizationId: string) {
@@ -112,6 +113,9 @@ export default async function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Email Integration */}
+      <EmailAccountsForm isAdmin={isAdmin(context)} />
 
       {/* Subscription */}
       <Card>

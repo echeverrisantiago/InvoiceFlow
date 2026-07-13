@@ -2,14 +2,12 @@ import { ChatGroq } from '@langchain/groq';
 import { HumanMessage } from '@langchain/core/messages';
 import type { ExtractionResult, InvoiceData } from '@/types';
 
-// Vision model for images
 const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
-  model: 'llama-3.2-11b-vision-preview',
+  model: 'meta-llama/llama-4-scout-17b-16e-instruct',
   temperature: 0,
 });
 
-// Text model for PDFs
 const textModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
   model: 'llama-3.3-70b-versatile',

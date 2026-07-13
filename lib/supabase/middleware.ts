@@ -37,9 +37,10 @@ export async function updateSession(request: NextRequest) {
 
   const user = session?.user ?? null;
 
-  // Don't redirect on auth callback routes
+  // Don't redirect on auth callback or cron routes (cron uses its own auth)
   if (
     request.nextUrl.pathname.startsWith('/api/auth') ||
+    request.nextUrl.pathname.startsWith('/api/cron') ||
     request.nextUrl.pathname.startsWith('/_next')
   ) {
     return supabaseResponse;

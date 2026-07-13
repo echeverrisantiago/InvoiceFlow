@@ -2,6 +2,7 @@ import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -18,13 +19,56 @@ import {
   invoiceStatusColors,
   invoiceStatusLabels,
 } from '@/lib/utils';
-import { Upload, FileText, Eye } from 'lucide-react';
+import { Upload, FileText, Eye, Download } from 'lucide-react';
+import { InvoiceFilters } from '@/components/invoice-filters';
+import type { Prisma } from '@prisma/client';
 
-async function getInvoices(organizationId: string) {
+type PaymentStatus = 'PENDING' | 'PAID' | 'OVERDUE';
+
+async function getInvoices(
+  organizationId: string,
+  searchParams: { [key: string]: string | undefined }
+) {
+  const {
+    supplier,
+    dateFrom,
+    dateTo,
+    amountMin,
+    amountMax,
+    status,
+  } = searchParams;
+
+  const where: Prisma.InvoiceWhereInput = {
+    organizationId,
+  };
+
+  if (supplier) {
+    where.supplier = { contains: supplier, mode: 'insensitive' };
+  }
+
+  if (dateFrom || dateTo) {
+    where.issueDate = {};
+    if (dateFrom) where.issueDate.gte = new Date(dateFrom);
+    if (dateTo) where.issueDate.lte = new Date(dateTo);
+  }
+
+  if (amountMin || amountMax) {
+    where.total = {};
+    if (amountMin) where.total.gte = parseFloat(amountMin);
+    if (amountMax) where.total.lte = parseFloat(amountMax);
+  }
+
+  if (status) {
+    const paymentStatuses = ['PENDING', 'PAID', 'OVERDUE'];
+    if (paymentStatuses.includes(status)) {
+      where.paymentStatus = status as PaymentStatus;
+    } else {
+      where.status = status;
+    }
+  }
+
   return await prisma.invoice.findMany({
-    where: {
-      organizationId,
-    },
+    where,
     orderBy: {
       createdAt: 'desc',
     },
@@ -53,14 +97,19 @@ function getDisplayStatus(invoice: {
   return invoice.paymentStatus;
 }
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | undefined }>;
+}) {
   const context = await getTenantContext();
 
   if (!context) {
     redirect('/login');
   }
 
-  const invoices = await getInvoices(context.organization.id);
+  const sp = await searchParams;
+  const invoices = await getInvoices(context.organization.id, sp);
 
   return (
     <div className="space-y-6">
@@ -72,12 +121,20 @@ export default async function InvoicesPage() {
             Gestiona todas tus facturas en un solo lugar
           </p>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/invoices/upload">
-            <Upload className="mr-2 h-4 w-4" />
-            Subir Factura
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <a href="/api/invoices/export" target="_blank">
+              <Download className="mr-2 h-4 w-4" />
+              Exportar Excel
+            </a>
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/invoices/upload">
+              <Upload className="mr-2 h-4 w-4" />
+              Subir Factura
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Invoices Table */}
@@ -85,7 +142,11 @@ export default async function InvoicesPage() {
         <CardHeader>
           <CardTitle>Todas las Facturas</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          <Suspense fallback={null}>
+            <InvoiceFilters />
+          </Suspense>
+
           {invoices.length > 0 ? (
             <Table>
               <TableHeader>

@@ -3,7 +3,7 @@ import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency, invoiceStatusLabels } from '@/lib/utils';
-import { FileText, TrendingUp, Users, AlertCircle } from 'lucide-react';
+import { FileText, TrendingUp, Users, AlertCircle, AlertTriangle } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ async function getDashboardData(organizationId: string) {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   // Get invoices count and total for this month
-  const [totalInvoices, monthlyInvoices, totalAmount, upcomingDue] =
+  const [totalInvoices, monthlyInvoices, totalAmount, upcomingDue, overdueInvoices, overdueTotal] =
     await Promise.all([
       prisma.invoice.count({
         where: {
@@ -47,6 +47,25 @@ async function getDashboardData(organizationId: string) {
           },
           paymentStatus: 'PENDING',
           status: { notIn: ['FAILED', 'PROCESSING'] },
+        },
+      }),
+      prisma.invoice.count({
+        where: {
+          organizationId,
+          dueDate: { lt: now },
+          paymentStatus: 'PENDING',
+          status: { notIn: ['FAILED', 'PROCESSING'] },
+        },
+      }),
+      prisma.invoice.aggregate({
+        where: {
+          organizationId,
+          dueDate: { lt: now },
+          paymentStatus: 'PENDING',
+          status: { notIn: ['FAILED', 'PROCESSING'] },
+        },
+        _sum: {
+          total: true,
         },
       }),
     ]);
@@ -99,6 +118,8 @@ async function getDashboardData(organizationId: string) {
     monthlyInvoices,
     totalAmount: totalAmount._sum.total || 0,
     upcomingDue,
+    overdueInvoices,
+    overdueTotal: overdueTotal._sum.total || 0,
     topSuppliers,
     recentInvoices,
   };
@@ -124,7 +145,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -165,6 +186,21 @@ export default async function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{data.topSuppliers.length}</div>
             <p className="text-xs text-muted-foreground">Este mes</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Facturas Vencidas
+            </CardTitle>
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">{data.overdueInvoices}</div>
+            <p className="text-xs text-muted-foreground">
+              {formatCurrency(data.overdueTotal)} en total
+            </p>
           </CardContent>
         </Card>
 

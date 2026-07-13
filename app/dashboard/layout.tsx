@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { OrganizationProvider, useOrganization } from '@/lib/organization-context';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,8 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
@@ -21,6 +24,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const supabase = createClient();
   const { organization } = useOrganization();
+  const { theme, setTheme } = useTheme();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -89,6 +93,18 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                 {organization?.name ?? '...'}
               </p>
             </div>
+            <Button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              variant="outline"
+              className="w-full justify-start mb-2"
+            >
+              {theme === 'dark' ? (
+                <Sun className="mr-2 h-4 w-4" />
+              ) : (
+                <Moon className="mr-2 h-4 w-4" />
+              )}
+              {theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+            </Button>
             <Button
               onClick={handleLogout}
               variant="outline"
