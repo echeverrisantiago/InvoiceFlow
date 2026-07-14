@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -264,7 +265,7 @@ export async function fetchNewEmails(
                     iva: extraction.data.iva,
                     total: extraction.data.total,
                     description: extraction.data.description,
-                    invoiceItems: extraction.data.items,
+                    invoiceItems: extraction.data.items as unknown as Prisma.InputJsonValue,
                     extractedData: extraction.rawResponse,
                     status: 'EXTRACTED',
                     paymentStatus:
