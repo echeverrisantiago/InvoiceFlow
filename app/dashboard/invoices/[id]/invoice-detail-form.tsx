@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import type { InvoiceLineItem } from '@/types';
 import { formatCurrency, formatDate, toDateInputValue } from '@/lib/utils';
 
-type EditableInvoice = {
+export type EditableInvoice = {
   id: string;
   fileName: string;
   fileUrl: string;

@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { Button } from '@/components/ui/button';
-import { InvoiceDetailForm } from './invoice-detail-form';
+import { InvoiceDetailForm, type EditableInvoice } from './invoice-detail-form';
 
 async function getInvoice(invoiceId: string, organizationId: string) {
   return prisma.invoice.findFirst({
@@ -59,7 +59,7 @@ export default async function InvoiceDetailPage({
         </p>
       </div>
 
-      <InvoiceDetailForm invoice={invoice} />
+      <InvoiceDetailForm invoice={invoice as unknown as EditableInvoice} />
     </div>
   );
 }
