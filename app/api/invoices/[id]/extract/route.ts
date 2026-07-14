@@ -80,7 +80,7 @@ export async function POST(
         iva: extraction.data.iva,
         total: extraction.data.total,
         description: extraction.data.description,
-        invoiceItems: extraction.data.items as Prisma.InputJsonValue,
+        invoiceItems: extraction.data.items as unknown as Prisma.InputJsonValue,
         extractedData: extraction.rawResponse,
         status: 'EXTRACTED',
         paymentStatus: getPaymentStatusFromDueDate(
