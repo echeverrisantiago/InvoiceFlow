@@ -21,9 +21,13 @@ import {
 } from '@/lib/utils';
 import { Upload, FileText, Eye, Download } from 'lucide-react';
 import { InvoiceFilters } from '@/components/invoice-filters';
-import type { Prisma } from '@prisma/client';
+import { InvoicePagination } from '@/components/invoice-pagination';
+import type { Prisma, InvoiceStatus } from '@prisma/client';
 
 type PaymentStatus = 'PENDING' | 'PAID' | 'OVERDUE';
+
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 50;
 
 async function getInvoices(
   organizationId: string,
@@ -36,7 +40,13 @@ async function getInvoices(
     amountMin,
     amountMax,
     status,
+    page: pageStr,
+    pageSize: pageSizeStr,
   } = searchParams;
+
+  const page = Math.max(1, parseInt(pageStr ?? '1'));
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(pageSizeStr ?? String(DEFAULT_PAGE_SIZE))));
+  const skip = (page - 1) * pageSize;
 
   const where: Prisma.InvoiceWhereInput = {
     organizationId,
@@ -63,27 +73,40 @@ async function getInvoices(
     if (paymentStatuses.includes(status)) {
       where.paymentStatus = status as PaymentStatus;
     } else {
-      where.status = status;
+      where.status = status as InvoiceStatus;
     }
   }
 
-  return await prisma.invoice.findMany({
-    where,
-    orderBy: {
-      createdAt: 'desc',
-    },
-    select: {
-      id: true,
-      supplier: true,
-      supplierNit: true,
-      issueDate: true,
-      dueDate: true,
-      total: true,
-      status: true,
-      paymentStatus: true,
-      createdAt: true,
-    },
-  });
+  const [invoices, totalCount] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        supplier: true,
+        supplierNit: true,
+        issueDate: true,
+        dueDate: true,
+        total: true,
+        status: true,
+        paymentStatus: true,
+        createdAt: true,
+      },
+    }),
+    prisma.invoice.count({ where }),
+  ]);
+
+  return {
+    invoices,
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.ceil(totalCount / pageSize),
+  };
 }
 
 function getDisplayStatus(invoice: {
@@ -109,7 +132,7 @@ export default async function InvoicesPage({
   }
 
   const sp = await searchParams;
-  const invoices = await getInvoices(context.organization.id, sp);
+  const { invoices, totalCount, page, totalPages } = await getInvoices(context.organization.id, sp);
 
   return (
     <div className="space-y-6">
@@ -148,7 +171,7 @@ export default async function InvoicesPage({
           </Suspense>
 
           {invoices.length > 0 ? (
-            <Table>
+            <><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Proveedor</TableHead>
@@ -202,7 +225,8 @@ export default async function InvoicesPage({
                 )})}
               </TableBody>
             </Table>
-          ) : (
+            <InvoicePagination currentPage={page} totalPages={totalPages} totalCount={totalCount} />
+          </>) : (
             <div className="flex flex-col items-center justify-center py-12">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">

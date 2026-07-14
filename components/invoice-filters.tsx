@@ -37,6 +37,7 @@ export function InvoiceFilters() {
     const amountMaxVal = formData.get('amountMax') as string;
     const statusVal = formData.get('status') as string;
 
+    params.set('page', '1');
     if (supplierVal) params.set('supplier', supplierVal);
     if (dateFromVal) params.set('dateFrom', dateFromVal);
     if (dateToVal) params.set('dateTo', dateToVal);
