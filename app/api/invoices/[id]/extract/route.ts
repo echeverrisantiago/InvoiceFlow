@@ -3,6 +3,7 @@ import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { extractInvoiceData } from '@/lib/ia';
 import { uploadToDrive } from '@/lib/drive';
+import { Prisma } from '@prisma/client';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -79,7 +80,7 @@ export async function POST(
         iva: extraction.data.iva,
         total: extraction.data.total,
         description: extraction.data.description,
-        invoiceItems: extraction.data.items,
+        invoiceItems: extraction.data.items as Prisma.InputJsonValue,
         extractedData: extraction.rawResponse,
         status: 'EXTRACTED',
         paymentStatus: getPaymentStatusFromDueDate(
