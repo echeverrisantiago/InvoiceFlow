@@ -1,13 +1,5 @@
 {
   "crons": [
-    // {
-    //   "path": "/api/cron/fetch-emails",
-    //   "schedule": "*/5 * * * *"
-    // },
-    // {
-    //   "path": "/api/cron/check-due-invoices",
-    //   "schedule": "0 14 * * *"
-    // }
     {
       "path": "/api/cron/fetch-emails",
       "schedule": "0 0 * * *"
