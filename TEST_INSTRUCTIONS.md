@@ -1,4 +1,4 @@
-# 🧪 Instrucciones de Prueba - InvoiceFlow
+# 🧪 Instrucciones de Prueba - FactuMeIA
 
 ## ✅ Cambios Implementados
 
@@ -182,4 +182,4 @@ Si el problema persiste, proporciona esta información:
 3. 📊 **Ver analytics** de tus facturas
 4. 💰 **Configurar suscripción** (Mercado Pago - requiere credenciales)
 
-**Disfruta InvoiceFlow!** 🚀
+**Disfruta FactuMeIA!** 🚀

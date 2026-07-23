@@ -7,7 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'InvoiceFlow - Gestión Inteligente de Facturas',
+  title: 'FactuMeIA - Gestión Inteligente de Facturas',
   description: 'SaaS para gestión inteligente de facturas dirigido a PYMEs en Colombia',
 };
 

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Link as LinkIcon } from 'lucide-react';
+import { CheckCircle2, Link as LinkIcon, LogOut } from 'lucide-react';
 import { getAuthUrl } from '@/lib/drive';
 import { EmailAccountsForm } from '@/components/email-accounts-form';
 import Link from 'next/link';
@@ -25,7 +25,11 @@ async function getSettings(organizationId: string) {
   return { organization, subscription };
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const context = await getTenantContext();
 
   if (!context) {
@@ -36,9 +40,52 @@ export default async function SettingsPage() {
     context.organization.id
   );
   const driveAuthUrl = getAuthUrl();
+  const sp = await searchParams;
 
   return (
     <div className="space-y-6">
+      {/* Status Messages */}
+      {sp.success === 'drive_connected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Google Drive conectado correctamente.
+        </div>
+      )}
+      {sp.success === 'drive_disconnected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Google Drive desconectado correctamente.
+        </div>
+      )}
+      {sp.error === 'drive_auth_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al conectar Google Drive: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+      {sp.error === 'drive_disconnect_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al desconectar Google Drive: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+      {sp.success === 'email_connected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          {sp.provider === 'gmail' ? 'Gmail' : 'Outlook'} conectado correctamente.
+        </div>
+      )}
+      {sp.success === 'email_disconnected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Conexión de email desconectada correctamente.
+        </div>
+      )}
+      {sp.error === 'email_auth_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al conectar el correo: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+      {sp.error === 'email_disconnect_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al desconectar el correo: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Configuración</h1>
@@ -82,14 +129,24 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           {organization?.driveRefreshToken ? (
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="font-medium">Conectado</p>
-                <p className="text-sm text-muted-foreground">
-                  Las facturas se guardarán automáticamente en tu Drive
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium">Conectado</p>
+                  <p className="text-sm text-muted-foreground">
+                    Las facturas se guardarán automáticamente en tu Drive
+                  </p>
+                </div>
               </div>
+              {isAdmin(context) && (
+                <form action="/api/auth/google-drive/disconnect" method="POST">
+                  <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Desconectar Google Drive
+                  </Button>
+                </form>
+              )}
             </div>
           ) : (
             <div>

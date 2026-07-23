@@ -43,6 +43,12 @@ enum PaymentStatus {
   OVERDUE
 }
 
+enum EmailProvider {
+  IMAP
+  GMAIL
+  OUTLOOK
+}
+
 enum InvoiceSource {
   MANUAL
   EMAIL
@@ -151,21 +157,30 @@ model Invoice {
 }
 
 model EmailAccount {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   email          String
-  imapHost       String
-  imapPort       Int      @default(993)
-  imapUsername   String
-  imapPassword   String   @db.Text
-  useTls         Boolean  @default(true)
-  isActive       Boolean  @default(true)
+  provider       EmailProvider  @default(IMAP)
+
+  // IMAP fields (manual configuration)
+  imapHost       String?
+  imapPort       Int?
+  imapUsername   String?
+  imapPassword   String?        @db.Text
+  useTls         Boolean        @default(true)
+
+  // OAuth fields (GMAIL or OUTLOOK)
+  oauthRefreshToken String?     @db.Text
+  oauthAccessToken  String?     @db.Text
+  oauthTokenExpiry  DateTime?
+
+  isActive       Boolean        @default(true)
   lastCheckedAt  DateTime?
   lastEmailUid   BigInt?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([email])

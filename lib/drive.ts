@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { google } from 'googleapis';
 
 const oauth2Client = new google.auth.OAuth2(
@@ -34,7 +35,7 @@ export async function uploadToDrive({
     const buffer = Buffer.from(arrayBuffer);
 
     // Create folder if doesn't exist
-    const folderName = 'InvoiceFlow';
+    const folderName = 'FactuMeIA';
     let folderId: string | undefined;
 
     const folderSearch = await drive.files.list({
@@ -56,6 +57,7 @@ export async function uploadToDrive({
     }
 
     // Upload file
+    const readableStream = Readable.from(buffer);
     const file = await drive.files.create({
       requestBody: {
         name: fileName,
@@ -63,7 +65,7 @@ export async function uploadToDrive({
       },
       media: {
         mimeType: response.headers.get('content-type') || 'application/pdf',
-        body: buffer,
+        body: readableStream,
       },
       fields: 'id',
     });

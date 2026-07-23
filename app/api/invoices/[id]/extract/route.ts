@@ -106,9 +106,17 @@ export async function POST(
             status: 'BACKED_UP',
           },
         });
-      } catch (driveError) {
+      } catch (driveError: any) {
         console.error('Drive upload error:', driveError);
-        // Don't fail the whole process if Drive upload fails
+        if (driveError.message?.includes('invalid_grant')) {
+          await prisma.organization.update({
+            where: { id: invoice.organizationId },
+            data: {
+              driveRefreshToken: null,
+              driveTokenExpiry: null,
+            },
+          });
+        }
       }
     }
 

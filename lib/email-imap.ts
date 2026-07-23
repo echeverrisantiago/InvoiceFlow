@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
+import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
 
 const ALGORITHM = 'aes-256-gcm';
 const ENCRYPTION_KEY = process.env.IMAP_ENCRYPTION_KEY;
@@ -35,15 +36,19 @@ export interface EmailAccountConfig {
   id: string;
   organizationId: string;
   email: string;
-  imapHost: string;
-  imapPort: number;
-  imapUsername: string;
-  imapPassword: string;
+  provider: string;
+  imapHost: string | null;
+  imapPort: number | null;
+  imapUsername: string | null;
+  imapPassword: string | null;
   useTls: boolean;
   isActive: boolean;
   lastCheckedAt: Date | null;
   lastEmailUid: bigint | null;
   createdAt: Date;
+  oauthRefreshToken: string | null;
+  oauthAccessToken: string | null;
+  oauthTokenExpiry: Date | null;
 }
 
 export function encryptPassword(password: string): string {
@@ -71,27 +76,92 @@ export function decryptPassword(encrypted: string): string {
   return decrypted;
 }
 
+function getImapSettings(provider: string): { host: string; port: number; tls: boolean } {
+  if (provider === 'GMAIL') {
+    return { host: 'imap.gmail.com', port: 993, tls: true };
+  }
+  if (provider === 'OUTLOOK') {
+    return { host: 'outlook.office365.com', port: 993, tls: true };
+  }
+  return { host: '', port: 0, tls: false };
+}
+
+async function getAccessTokenForOAuth(config: EmailAccountConfig): Promise<string | null> {
+  if (config.provider !== 'GMAIL' && config.provider !== 'OUTLOOK') return null;
+  if (!config.oauthRefreshToken) return null;
+
+  const now = new Date();
+  if (config.oauthTokenExpiry && config.oauthAccessToken && config.oauthTokenExpiry > now) {
+    return config.oauthAccessToken;
+  }
+
+  let newToken: { accessToken?: string | null; expiryDate: Date | null };
+  if (config.provider === 'GMAIL') {
+    newToken = await refreshGmailAccessToken(config.oauthRefreshToken);
+  } else {
+    newToken = await refreshOutlookAccessToken(config.oauthRefreshToken);
+  }
+
+  if (newToken.accessToken) {
+    await prisma.emailAccount.update({
+      where: { id: config.id },
+      data: {
+        oauthAccessToken: newToken.accessToken,
+        oauthTokenExpiry: newToken.expiryDate,
+      },
+    });
+    return newToken.accessToken;
+  }
+
+  return null;
+}
+
 export async function testImapConnection(config: {
-  imapHost: string;
-  imapPort: number;
-  imapUsername: string;
-  imapPassword: string;
-  useTls: boolean;
+  imapHost?: string;
+  imapPort?: number;
+  imapUsername?: string;
+  imapPassword?: string;
+  useTls?: boolean;
+  provider?: string;
+  email?: string;
+  accessToken?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
-    const client = new ImapFlow({
-      host: config.imapHost,
-      port: config.imapPort,
-      auth: {
-        user: config.imapUsername,
-        pass: config.imapPassword,
-      },
-      secure: config.useTls,
-      logger: false,
-      connectionTimeout: IMAP_CONNECT_TIMEOUT,
-      socketTimeout: IMAP_SOCKET_TIMEOUT,
-    });
+    let imapConfig: ConstructorParameters<typeof ImapFlow>[0];
 
+    if (config.provider === 'GMAIL' || config.provider === 'OUTLOOK') {
+      if (!config.accessToken) {
+        return { success: false, error: 'No hay token de acceso disponible' };
+      }
+      const settings = getImapSettings(config.provider);
+      imapConfig = {
+        host: settings.host,
+        port: settings.port,
+        auth: {
+          user: config.email || '',
+          accessToken: config.accessToken,
+        },
+        secure: settings.tls,
+        logger: false,
+        connectionTimeout: IMAP_CONNECT_TIMEOUT,
+        socketTimeout: IMAP_SOCKET_TIMEOUT,
+      };
+    } else {
+      imapConfig = {
+        host: config.imapHost || '',
+        port: config.imapPort || 993,
+        auth: {
+          user: config.imapUsername || '',
+          pass: config.imapPassword || '',
+        },
+        secure: config.useTls !== false,
+        logger: false,
+        connectionTimeout: IMAP_CONNECT_TIMEOUT,
+        socketTimeout: IMAP_SOCKET_TIMEOUT,
+      };
+    }
+
+    const client = new ImapFlow(imapConfig);
     await withTimeout(client.connect(), IMAP_CONNECT_TIMEOUT, 'test conexión IMAP');
     await withTimeout(client.logout(), 10_000, 'test logout IMAP');
 
@@ -105,25 +175,52 @@ export async function testImapConnection(config: {
 export async function fetchNewEmails(
   config: EmailAccountConfig
 ): Promise<{ success: boolean; processed: number; errors: string[] }> {
-  const password = decryptPassword(config.imapPassword);
   const errors: string[] = [];
   let processed = 0;
 
-  const client = new ImapFlow({
-    host: config.imapHost,
-    port: config.imapPort,
-    auth: {
-      user: config.imapUsername,
-      pass: password,
-    },
-    secure: config.useTls,
-    logger: false,
-    connectionTimeout: IMAP_CONNECT_TIMEOUT,
-    socketTimeout: IMAP_SOCKET_TIMEOUT,
-  });
+  let imapConfig: ConstructorParameters<typeof ImapFlow>[0];
+
+  if (config.provider === 'GMAIL' || config.provider === 'OUTLOOK') {
+    const accessToken = await getAccessTokenForOAuth(config);
+    if (!accessToken) {
+      return { success: false, processed: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
+    }
+    const settings = getImapSettings(config.provider);
+    imapConfig = {
+      host: settings.host,
+      port: settings.port,
+      auth: {
+        user: config.email,
+        accessToken,
+      },
+      secure: settings.tls,
+      logger: false,
+      connectionTimeout: IMAP_CONNECT_TIMEOUT,
+      socketTimeout: IMAP_SOCKET_TIMEOUT,
+    };
+  } else {
+    if (!config.imapPassword) {
+      return { success: false, processed: 0, errors: ['Contraseña IMAP no configurada'] };
+    }
+    const password = decryptPassword(config.imapPassword);
+    imapConfig = {
+      host: config.imapHost || '',
+      port: config.imapPort || 993,
+      auth: {
+        user: config.imapUsername || '',
+        pass: password,
+      },
+      secure: config.useTls,
+      logger: false,
+      connectionTimeout: IMAP_CONNECT_TIMEOUT,
+      socketTimeout: IMAP_SOCKET_TIMEOUT,
+    };
+  }
+
+  const client = new ImapFlow(imapConfig);
 
   try {
-    console.log(`[fetchNewEmails] Conectando a ${config.imapHost}:${config.imapPort}...`);
+    console.log(`[fetchNewEmails] Conectando a ${imapConfig.host}:${imapConfig.port}...`);
     await withTimeout(client.connect(), IMAP_CONNECT_TIMEOUT, 'conexión IMAP');
     console.log(`[fetchNewEmails] Conectado. Abriendo INBOX...`);
 

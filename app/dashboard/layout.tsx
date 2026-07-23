@@ -55,7 +55,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       >
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center justify-between border-b px-6">
-            <h1 className="text-xl font-bold text-primary">InvoiceFlow</h1>
+            <h1 className="text-xl font-bold text-primary">FactuMeIA</h1>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
               <X className="h-6 w-6" />
             </button>
@@ -122,7 +122,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <button onClick={() => setSidebarOpen(true)}>
             <Menu className="h-6 w-6" />
           </button>
-          <h1 className="ml-4 text-xl font-bold text-primary">InvoiceFlow</h1>
+          <h1 className="ml-4 text-xl font-bold text-primary">FactuMeIA</h1>
         </header>
 
         <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-8">

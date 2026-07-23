@@ -1,6 +1,6 @@
-# InvoiceFlow - SaaS de Gestión Inteligente de Facturas
+# FactuMeIA - SaaS de Gestión Inteligente de Facturas
 
-![InvoiceFlow](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
+![FactuMeIA](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)
 ![Supabase](https://img.shields.io/badge/Supabase-Enabled-green?logo=supabase)
 ![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma)
@@ -46,7 +46,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 
 ```bash
 git clone <repository-url>
-cd InvoiceFlow
+cd FactuMeIA
 ```
 
 ### 2. Instalar dependencias
@@ -171,7 +171,7 @@ Visita http://localhost:3000
 ## 📁 Estructura del Proyecto
 
 ```
-InvoiceFlow/
+FactuMeIA/
 ├── app/
 │   ├── (auth)/
 │   │   ├── login/          # Página de login
@@ -371,7 +371,7 @@ Este proyecto es propietario y confidencial.
 
 ## 👥 Contribución
 
-Proyecto desarrollado para MVP de InvoiceFlow.
+Proyecto desarrollado para MVP de FactuMeIA.
 
 ---
 

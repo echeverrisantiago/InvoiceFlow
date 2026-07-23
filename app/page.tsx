@@ -6,7 +6,7 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <h1 className="text-2xl font-bold text-primary">InvoiceFlow</h1>
+          <h1 className="text-2xl font-bold text-primary">FactuMeIA</h1>
           <nav className="flex gap-4">
             <Button asChild variant="ghost">
               <Link href="/login">Iniciar Sesión</Link>
@@ -65,7 +65,7 @@ export default function HomePage() {
 
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; 2026 InvoiceFlow. Todos los derechos reservados.</p>
+          <p>&copy; 2026 FactuMeIA. Todos los derechos reservados.</p>
         </div>
       </footer>
     </div>

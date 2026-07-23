@@ -81,7 +81,7 @@ export default function RegisterPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Crear Cuenta</CardTitle>
           <CardDescription>
-            Completa el formulario para comenzar a usar InvoiceFlow
+            Completa el formulario para comenzar a usar FactuMeIA
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleRegister}>

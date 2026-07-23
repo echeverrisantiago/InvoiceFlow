@@ -73,7 +73,7 @@ function generateDueAlertHtml(
           <!-- Header -->
           <tr>
             <td style="background-color: #2563eb; padding: 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">InvoiceFlow</h1>
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">FactuMeIA</h1>
               <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
             </td>
           </tr>
@@ -126,7 +126,7 @@ function generateDueAlertHtml(
           <tr>
             <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                © 2026 InvoiceFlow. Todos los derechos reservados.
+                © 2026 FactuMeIA. Todos los derechos reservados.
               </p>
               <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
                 Este es un correo automático, por favor no responder.

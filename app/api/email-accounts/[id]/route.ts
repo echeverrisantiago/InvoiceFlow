@@ -48,6 +48,7 @@ export async function PATCH(
       select: {
         id: true,
         email: true,
+        provider: true,
         imapHost: true,
         imapPort: true,
         imapUsername: true,
