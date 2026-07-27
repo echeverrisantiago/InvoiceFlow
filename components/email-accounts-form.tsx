@@ -130,19 +130,7 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
   async function handleOAuthConnect(provider: string) {
     setConnecting(provider);
     setError('');
-
-    try {
-      const res = await fetch(`/api/auth/email/${provider}`);
-      if (res.redirected) {
-        window.location.href = res.url;
-      } else {
-        const data = await res.json();
-        window.location.href = data.url;
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al conectar');
-      setConnecting(null);
-    }
+    window.location.href = `/api/auth/email/${provider}`;
   }
 
   async function handleTest(id: string) {
