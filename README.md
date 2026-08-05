@@ -116,8 +116,9 @@ SENDGRID_FROM_EMAIL=noreply@tudominio.com
 5. Copia las credenciales:
 
 ```env
-GOOGLE_DRIVE_CLIENT_ID=xxx.apps.googleusercontent.com
-GOOGLE_DRIVE_CLIENT_SECRET=xxx
+GMAIL_CLIENT_ID=xxx.apps.googleusercontent.com
+GMAIL_CLIENT_SECRET=xxx
+GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/email/gmail/callback
 GOOGLE_DRIVE_REDIRECT_URI=http://localhost:3000/api/auth/google-drive/callback
 ```
 

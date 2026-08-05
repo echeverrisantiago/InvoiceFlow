@@ -3,26 +3,40 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Link as LinkIcon, LogOut } from 'lucide-react';
+import { CheckCircle2, Link as LinkIcon, LogOut, Cloud, Mail } from 'lucide-react';
 import { getAuthUrl } from '@/lib/drive';
+import { getOneDriveAuthUrl } from '@/lib/onedrive';
 import { EmailAccountsForm } from '@/components/email-accounts-form';
 import Link from 'next/link';
 
 async function getSettings(organizationId: string) {
-  const [organization, subscription] = await Promise.all([
+  const [organization, subscription, emailAccounts] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
         name: true,
         driveRefreshToken: true,
+        onedriveRefreshToken: true,
       },
     }),
     prisma.subscription.findUnique({
       where: { organizationId },
     }),
+    prisma.emailAccount.findMany({
+      where: { organizationId },
+      select: { id: true, provider: true, email: true },
+    }),
   ]);
 
-  return { organization, subscription };
+  const gmailAccount = emailAccounts.find(a => a.provider === 'GMAIL');
+  const outlookAccount = emailAccounts.find(a => a.provider === 'OUTLOOK');
+
+  return {
+    organization,
+    subscription,
+    activeProvider: gmailAccount ? 'gmail' : outlookAccount ? 'outlook' : null,
+    activeEmail: gmailAccount?.email || outlookAccount?.email || null,
+  };
 }
 
 export default async function SettingsPage({
@@ -36,10 +50,11 @@ export default async function SettingsPage({
     redirect('/login');
   }
 
-  const { organization, subscription } = await getSettings(
+  const { organization, subscription, activeProvider, activeEmail } = await getSettings(
     context.organization.id
   );
   const driveAuthUrl = getAuthUrl();
+  const oneDriveAuthUrl = getOneDriveAuthUrl();
   const sp = await searchParams;
 
   return (
@@ -65,6 +80,28 @@ export default async function SettingsPage({
           Error al desconectar Google Drive: {sp.message || 'Error desconocido'}
         </div>
       )}
+
+      {sp.success === 'onedrive_connected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          OneDrive conectado correctamente.
+        </div>
+      )}
+      {sp.success === 'onedrive_disconnected' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          OneDrive desconectado correctamente.
+        </div>
+      )}
+      {sp.error === 'onedrive_auth_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al conectar OneDrive: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+      {sp.error === 'onedrive_disconnect_failed' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Error al desconectar OneDrive: {sp.message || 'Error desconocido'}
+        </div>
+      )}
+
       {sp.success === 'email_connected' && (
         <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
           {sp.provider === 'gmail' ? 'Gmail' : 'Outlook'} conectado correctamente.
@@ -118,61 +155,137 @@ export default async function SettingsPage({
         </CardContent>
       </Card>
 
-      {/* Google Drive Integration */}
+      {/* Unified Provider + Email + Storage Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Integración con Google Drive</CardTitle>
-          <CardDescription>
-            Conecta tu cuenta de Google Drive para guardar automáticamente las
-            facturas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {organization?.driveRefreshToken ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium">Conectado</p>
-                  <p className="text-sm text-muted-foreground">
-                    Las facturas se guardarán automáticamente en tu Drive
-                  </p>
-                </div>
-              </div>
-              {isAdmin(context) && (
-                <form action="/api/auth/google-drive/disconnect" method="POST">
-                  <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Desconectar Google Drive
-                  </Button>
-                </form>
-              )}
-            </div>
-          ) : (
+          <div className="flex items-center gap-3">
+            {activeProvider === 'gmail' && <Mail className="h-5 w-5 text-red-600" />}
+            {activeProvider === 'outlook' && <Mail className="h-5 w-5 text-blue-600" />}
+            {!activeProvider && <Cloud className="h-5 w-5 text-muted-foreground" />}
             <div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Conecta tu cuenta para activar el backup automático en Google
-                Drive
-              </p>
-              {isAdmin(context) ? (
-                <Button asChild>
-                  <a href={driveAuthUrl}>
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Conectar Google Drive
-                  </a>
-                </Button>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Solo los administradores pueden conectar Google Drive
-                </p>
-              )}
+              <CardTitle>
+                {activeProvider === 'gmail' && 'Google (Gmail + Drive)'}
+                {activeProvider === 'outlook' && 'Microsoft (Outlook + OneDrive)'}
+                {!activeProvider && 'Conectar proveedor'}
+              </CardTitle>
+              <CardDescription>
+                {activeProvider
+                  ? `Conectado como ${activeEmail}`
+                  : 'Elige un proveedor para recibir facturas y guardarlas automáticamente'}
+              </CardDescription>
             </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {activeProvider ? (
+            <>
+              {/* Connected provider info + actions (client) */}
+              <div className="rounded-lg border p-4">
+                <EmailAccountsForm isAdmin={isAdmin(context)} />
+              </div>
+
+              {/* Storage section */}
+              {activeProvider === 'gmail' && (
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-5 w-5 text-green-600" />
+                    <p className="font-medium">Google Drive</p>
+                  </div>
+                  {organization?.driveRefreshToken ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="font-medium">Conectado</p>
+                          <p className="text-sm text-muted-foreground">
+                            Las facturas se guardarán automáticamente en tu Drive
+                          </p>
+                        </div>
+                      </div>
+                      {isAdmin(context) && (
+                        <form action="/api/auth/google-drive/disconnect" method="POST">
+                          <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Desconectar Google Drive
+                          </Button>
+                        </form>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Conecta tu Google Drive para guardar las facturas automáticamente
+                      </p>
+                      {isAdmin(context) ? (
+                        <Button asChild>
+                          <a href={driveAuthUrl}>
+                            <LinkIcon className="mr-2 h-4 w-4" />
+                            Conectar Google Drive
+                          </a>
+                        </Button>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Solo los administradores pueden conectar el almacenamiento
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeProvider === 'outlook' && (
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-5 w-5 text-blue-600" />
+                    <p className="font-medium">OneDrive</p>
+                  </div>
+                  {organization?.onedriveRefreshToken ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="font-medium">Conectado</p>
+                          <p className="text-sm text-muted-foreground">
+                            Las facturas se guardarán automáticamente en tu OneDrive
+                          </p>
+                        </div>
+                      </div>
+                      {isAdmin(context) && (
+                        <form action="/api/auth/onedrive/disconnect" method="POST">
+                          <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Desconectar OneDrive
+                          </Button>
+                        </form>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Conecta tu OneDrive para guardar las facturas automáticamente
+                      </p>
+                      {isAdmin(context) ? (
+                        <Button asChild>
+                          <a href={oneDriveAuthUrl}>
+                            <LinkIcon className="mr-2 h-4 w-4" />
+                            Conectar OneDrive
+                          </a>
+                        </Button>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Solo los administradores pueden conectar el almacenamiento
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <EmailAccountsForm isAdmin={isAdmin(context)} />
           )}
         </CardContent>
       </Card>
-
-      {/* Email Integration */}
-      <EmailAccountsForm isAdmin={isAdmin(context)} />
 
       {/* Subscription */}
       <Card>

@@ -1,14 +1,10 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
 import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
-
-const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.IMAP_ENCRYPTION_KEY;
 
 const MAX_EMAILS_PER_RUN = 50;
 const IMAP_CONNECT_TIMEOUT = 30_000;
@@ -37,11 +33,6 @@ export interface EmailAccountConfig {
   organizationId: string;
   email: string;
   provider: string;
-  imapHost: string | null;
-  imapPort: number | null;
-  imapUsername: string | null;
-  imapPassword: string | null;
-  useTls: boolean;
   isActive: boolean;
   lastCheckedAt: Date | null;
   lastEmailUid: bigint | null;
@@ -49,31 +40,6 @@ export interface EmailAccountConfig {
   oauthRefreshToken: string | null;
   oauthAccessToken: string | null;
   oauthTokenExpiry: Date | null;
-}
-
-export function encryptPassword(password: string): string {
-  if (!ENCRYPTION_KEY) throw new Error('IMAP_ENCRYPTION_KEY no configurada');
-  const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const iv = randomBytes(16);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-  let encrypted = cipher.update(password, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
-}
-
-export function decryptPassword(encrypted: string): string {
-  if (!ENCRYPTION_KEY) throw new Error('IMAP_ENCRYPTION_KEY no configurada');
-  const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const parts = encrypted.split(':');
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const encryptedText = parts.slice(2).join(':');
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
 }
 
 function getImapSettings(provider: string): { host: string; port: number; tls: boolean } {
@@ -117,49 +83,27 @@ async function getAccessTokenForOAuth(config: EmailAccountConfig): Promise<strin
 }
 
 export async function testImapConnection(config: {
-  imapHost?: string;
-  imapPort?: number;
-  imapUsername?: string;
-  imapPassword?: string;
-  useTls?: boolean;
   provider?: string;
   email?: string;
   accessToken?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
-    let imapConfig: ConstructorParameters<typeof ImapFlow>[0];
-
-    if (config.provider === 'GMAIL' || config.provider === 'OUTLOOK') {
-      if (!config.accessToken) {
-        return { success: false, error: 'No hay token de acceso disponible' };
-      }
-      const settings = getImapSettings(config.provider);
-      imapConfig = {
-        host: settings.host,
-        port: settings.port,
-        auth: {
-          user: config.email || '',
-          accessToken: config.accessToken,
-        },
-        secure: settings.tls,
-        logger: false,
-        connectionTimeout: IMAP_CONNECT_TIMEOUT,
-        socketTimeout: IMAP_SOCKET_TIMEOUT,
-      };
-    } else {
-      imapConfig = {
-        host: config.imapHost || '',
-        port: config.imapPort || 993,
-        auth: {
-          user: config.imapUsername || '',
-          pass: config.imapPassword || '',
-        },
-        secure: config.useTls !== false,
-        logger: false,
-        connectionTimeout: IMAP_CONNECT_TIMEOUT,
-        socketTimeout: IMAP_SOCKET_TIMEOUT,
-      };
+    if (!config.accessToken) {
+      return { success: false, error: 'No hay token de acceso disponible' };
     }
+    const settings = getImapSettings(config.provider || '');
+    const imapConfig = {
+      host: settings.host,
+      port: settings.port,
+      auth: {
+        user: config.email || '',
+        accessToken: config.accessToken,
+      },
+      secure: settings.tls,
+      logger: false as const,
+      connectionTimeout: IMAP_CONNECT_TIMEOUT,
+      socketTimeout: IMAP_SOCKET_TIMEOUT,
+    };
 
     const client = new ImapFlow(imapConfig);
     await withTimeout(client.connect(), IMAP_CONNECT_TIMEOUT, 'test conexión IMAP');
@@ -178,44 +122,23 @@ export async function fetchNewEmails(
   const errors: string[] = [];
   let processed = 0;
 
-  let imapConfig: ConstructorParameters<typeof ImapFlow>[0];
-
-  if (config.provider === 'GMAIL' || config.provider === 'OUTLOOK') {
-    const accessToken = await getAccessTokenForOAuth(config);
-    if (!accessToken) {
-      return { success: false, processed: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
-    }
-    const settings = getImapSettings(config.provider);
-    imapConfig = {
-      host: settings.host,
-      port: settings.port,
-      auth: {
-        user: config.email,
-        accessToken,
-      },
-      secure: settings.tls,
-      logger: false,
-      connectionTimeout: IMAP_CONNECT_TIMEOUT,
-      socketTimeout: IMAP_SOCKET_TIMEOUT,
-    };
-  } else {
-    if (!config.imapPassword) {
-      return { success: false, processed: 0, errors: ['Contraseña IMAP no configurada'] };
-    }
-    const password = decryptPassword(config.imapPassword);
-    imapConfig = {
-      host: config.imapHost || '',
-      port: config.imapPort || 993,
-      auth: {
-        user: config.imapUsername || '',
-        pass: password,
-      },
-      secure: config.useTls,
-      logger: false,
-      connectionTimeout: IMAP_CONNECT_TIMEOUT,
-      socketTimeout: IMAP_SOCKET_TIMEOUT,
-    };
+  const accessToken = await getAccessTokenForOAuth(config);
+  if (!accessToken) {
+    return { success: false, processed: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
   }
+  const settings = getImapSettings(config.provider);
+  const imapConfig = {
+    host: settings.host,
+    port: settings.port,
+    auth: {
+      user: config.email,
+      accessToken,
+    },
+    secure: settings.tls,
+      logger: false as const,
+      connectionTimeout: IMAP_CONNECT_TIMEOUT,
+      socketTimeout: IMAP_SOCKET_TIMEOUT,
+  };
 
   const client = new ImapFlow(imapConfig);
 
@@ -375,32 +298,16 @@ export async function fetchNewEmails(
 
                 const org = await prisma.organization.findUnique({
                   where: { id: config.organizationId },
-                  select: { driveRefreshToken: true },
+                  select: {
+                    driveRefreshToken: true,
+                    onedriveRefreshToken: true,
+                  },
                 });
 
-                if (org?.driveRefreshToken) {
-                  try {
-                    const { uploadToDrive } = await import('@/lib/drive');
-                    const driveFileId = await withTimeout(
-                      uploadToDrive({
-                        fileUrl: urlData.publicUrl,
-                        fileName,
-                        refreshToken: org.driveRefreshToken,
-                      }),
-                      60_000,
-                      'uploadToDrive'
-                    );
-
-                    await prisma.invoice.update({
-                      where: { id: invoice.id },
-                      data: {
-                        driveFileId,
-                        status: 'BACKED_UP',
-                      },
-                    });
-                  } catch (driveError) {
-                    console.error('Drive upload error:', driveError);
-                  }
+                if (config.provider === 'GMAIL' && org?.driveRefreshToken) {
+                  await backupToDrive({ fileUrl: urlData.publicUrl, fileName, refreshToken: org.driveRefreshToken, invoiceId: invoice.id });
+                } else if (config.provider === 'OUTLOOK' && org?.onedriveRefreshToken) {
+                  await backupToOneDrive({ fileUrl: urlData.publicUrl, fileName, refreshToken: org.onedriveRefreshToken, invoiceId: invoice.id });
                 }
               } else {
                 await prisma.invoice.update({
@@ -469,5 +376,39 @@ export async function fetchNewEmails(
       processed,
       errors: [msg],
     };
+  }
+}
+
+async function backupToDrive({ fileUrl, fileName, refreshToken, invoiceId }: { fileUrl: string; fileName: string; refreshToken: string; invoiceId: string }) {
+  try {
+    const { uploadToDrive } = await import('@/lib/drive');
+    const driveFileId = await withTimeout(
+      uploadToDrive({ fileUrl, fileName, refreshToken }),
+      60_000,
+      'uploadToDrive'
+    );
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { driveFileId, status: 'BACKED_UP' },
+    });
+  } catch (driveError) {
+    console.error('Google Drive upload error:', driveError);
+  }
+}
+
+async function backupToOneDrive({ fileUrl, fileName, refreshToken, invoiceId }: { fileUrl: string; fileName: string; refreshToken: string; invoiceId: string }) {
+  try {
+    const { uploadToOneDrive } = await import('@/lib/onedrive');
+    const onedriveFileId = await withTimeout(
+      uploadToOneDrive({ fileUrl, fileName, refreshToken }),
+      60_000,
+      'uploadToOneDrive'
+    );
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { driveFileId: onedriveFileId, status: 'BACKED_UP' },
+    });
+  } catch (onedriveError) {
+    console.error('OneDrive upload error:', onedriveError);
   }
 }

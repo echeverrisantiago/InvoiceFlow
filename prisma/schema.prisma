@@ -44,7 +44,6 @@ enum PaymentStatus {
 }
 
 enum EmailProvider {
-  IMAP
   GMAIL
   OUTLOOK
 }
@@ -83,6 +82,10 @@ model Organization {
   // Google Drive integration
   driveRefreshToken String?  @db.Text
   driveTokenExpiry  DateTime?
+
+  // OneDrive integration
+  onedriveRefreshToken String? @db.Text
+  onedriveTokenExpiry  DateTime?
 
   // Relations
   members       OrganizationMember[]
@@ -159,14 +162,7 @@ model Invoice {
 model EmailAccount {
   id             String         @id @default(cuid())
   email          String
-  provider       EmailProvider  @default(IMAP)
-
-  // IMAP fields (manual configuration)
-  imapHost       String?
-  imapPort       Int?
-  imapUsername   String?
-  imapPassword   String?        @db.Text
-  useTls         Boolean        @default(true)
+  provider       EmailProvider
 
   // OAuth fields (GMAIL or OUTLOOK)
   oauthRefreshToken String?     @db.Text
