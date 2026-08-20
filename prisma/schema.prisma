@@ -58,11 +58,17 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Supabase Auth ID
   authId String @unique
+
+  // Trial tracking
+  isTrialUser          Boolean   @default(false)
+  trialStartedAt       DateTime?
+  passwordChangedAt    DateTime?
 
   // Relations
   memberships      OrganizationMember[]

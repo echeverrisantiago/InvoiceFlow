@@ -19,6 +19,7 @@ export interface TenantContext {
 
 /**
  * Validates that the user is authenticated and belongs to an organization.
+ * Also blocks trial users who haven't changed their temporary password.
  * Cached per-request with React cache() — only executes once per request
  * even if called multiple times (middleware, page, API route).
  */
@@ -46,6 +47,15 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
   if (!user || user.memberships.length === 0) {
     await supabase.auth.signOut();
     return null;
+  }
+
+  if (user.isTrialUser && !user.passwordChangedAt) {
+    if (user.trialStartedAt) {
+      const trialEnd = new Date(user.trialStartedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      if (new Date() <= trialEnd) {
+        return null;
+      }
+    }
   }
 
   const membership = user.memberships[0];

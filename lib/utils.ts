@@ -60,3 +60,26 @@ export function toDateInputValue(date?: Date | string | null): string {
 
   return `${year}-${month}-${day}`;
 }
+
+export function generateTemporaryPassword(length = 16): string {
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const digits = '0123456789';
+  const special = '!@#$%&*_-+=';
+  const all = upper + lower + digits + special;
+
+  const array = new Uint32Array(length);
+  crypto.getRandomValues(array);
+
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    password += all[array[i] % all.length];
+  }
+
+  password += upper[array[0] % upper.length];
+  password += lower[array[1] % lower.length];
+  password += digits[array[2] % digits.length];
+  password += special[array[3] % special.length];
+
+  return password;
+}

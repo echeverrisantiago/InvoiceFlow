@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
@@ -20,11 +20,33 @@ import {
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [checkingTrial, setCheckingTrial] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
   const { organization } = useOrganization();
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    const checkTrialStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/trial-status');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.requiresPasswordChange) {
+            router.push('/change-password');
+            return;
+          }
+        }
+      } catch {
+        // Silently fail, user might not be authenticated yet
+      } finally {
+        setCheckingTrial(false);
+      }
+    };
+
+    checkTrialStatus();
+  }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -36,6 +58,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
     { name: 'Facturas', href: '/dashboard/invoices', icon: FileText },
     { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
   ];
+
+  if (checkingTrial) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -150,4 +180,3 @@ export default function DashboardLayout({
     </OrganizationProvider>
   );
 }
-

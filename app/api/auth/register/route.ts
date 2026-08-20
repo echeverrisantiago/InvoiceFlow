@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
       // Create initial subscription (trial)
       const trialEndDate = new Date();
-      trialEndDate.setDate(trialEndDate.getDate() + 14); // 14 days trial
+      trialEndDate.setDate(trialEndDate.getDate() + 30); // 30 days trial
 
       await tx.subscription.create({
         data: {

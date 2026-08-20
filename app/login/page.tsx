@@ -30,11 +30,32 @@ export default function LoginPage() {
       if (error) throw error;
       if (!data.session) throw new Error('No se pudo crear la sesión');
 
-      // Wait a bit for cookies to be set
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      const trialResponse = await fetch('/api/auth/trial-status');
+
+      if (!trialResponse.ok && trialResponse.status !== 404) {
+        await supabase.auth.signOut();
+        toast.error('Error al verificar el estado de la cuenta');
+        return;
+      }
+
+      if (trialResponse.ok) {
+        const trialData = await trialResponse.json();
+
+        if (trialData.trialStatus === 'expired') {
+          await supabase.auth.signOut();
+          toast.error('Tu contraseña temporal ha expirado. Los 30 días de prueba han finalizado sin que activaras tu cuenta.');
+          return;
+        }
+
+        if (trialData.requiresPasswordChange) {
+          router.push('/change-password');
+          return;
+        }
+      }
+
       toast.success('¡Bienvenido de nuevo!');
-      // Use router to preserve session cookies
       router.push('/dashboard');
       router.refresh();
     } catch (error: any) {
