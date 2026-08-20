@@ -7,22 +7,23 @@ function normalizeInvoiceItems(items: unknown) {
     return [];
   }
 
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+
   return items.map((item) => {
     const current = item as Record<string, unknown>;
+    const quantity =
+      current.quantity === '' || current.quantity === null || current.quantity === undefined
+        ? null
+        : Number(current.quantity);
+    const unitPrice =
+      current.unitPrice === '' || current.unitPrice === null || current.unitPrice === undefined
+        ? null
+        : Number(current.unitPrice);
     return {
       description: String(current.description || ''),
-      quantity:
-        current.quantity === '' || current.quantity === null || current.quantity === undefined
-          ? null
-          : Number(current.quantity),
-      unitPrice:
-        current.unitPrice === '' || current.unitPrice === null || current.unitPrice === undefined
-          ? null
-          : Number(current.unitPrice),
-      total:
-        current.total === '' || current.total === null || current.total === undefined
-          ? null
-          : Number(current.total),
+      quantity,
+      unitPrice,
+      total: round2((quantity ?? 0) * (unitPrice ?? 0)),
     };
   });
 }
@@ -56,6 +57,12 @@ export async function PATCH(
       );
     }
 
+    const invoiceItems = normalizeInvoiceItems(body.invoiceItems);
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const total = round2(invoiceItems.reduce((sum, item) => sum + (item.total ?? 0), 0));
+    const subtotal = round2(total / 1.19);
+    const iva = round2(total - subtotal);
+
     const updatedInvoice = await prisma.invoice.update({
       where: { id },
       data: {
@@ -63,21 +70,12 @@ export async function PATCH(
         supplierNit: body.supplierNit || null,
         issueDate: body.issueDate ? new Date(body.issueDate) : null,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
-        subtotal:
-          body.subtotal === '' || body.subtotal === null || body.subtotal === undefined
-            ? null
-            : Number(body.subtotal),
-        iva:
-          body.iva === '' || body.iva === null || body.iva === undefined
-            ? null
-            : Number(body.iva),
-        total:
-          body.total === '' || body.total === null || body.total === undefined
-            ? null
-            : Number(body.total),
+        subtotal,
+        iva,
+        total,
         description: body.description || null,
         internalNotes: body.internalNotes || null,
-        invoiceItems: normalizeInvoiceItems(body.invoiceItems),
+        invoiceItems,
         paymentStatus: body.paymentStatus,
       },
       include: {

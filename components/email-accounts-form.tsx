@@ -56,14 +56,41 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  async function handleOAuthConnect(provider: string) {
+  async function handleOAuthConnect(provider: string, isChange = false) {
+    if (isChange) {
+      const ok = await confirmImpact('cambiar');
+      if (!ok) return;
+    }
     setConnecting(provider);
     setError('');
     window.location.href = `/api/auth/email/${provider}`;
   }
 
+  async function confirmImpact(action: 'cambiar' | 'eliminar'): Promise<boolean> {
+    let affectedInvoices = 0;
+    try {
+      const res = await fetch('/api/email-accounts/impact');
+      if (res.ok) {
+        const data = await res.json();
+        affectedInvoices = Number(data.affectedInvoices) || 0;
+      }
+    } catch {
+      /* fallback al confirm genérico */
+    }
+
+    if (affectedInvoices > 0) {
+      return confirm(
+        `Tienes ${affectedInvoices} factura(s) importada(s) desde este correo. Al ${action} la cuenta, ` +
+          `la vista previa y el archivo de esas facturas ya no estarán disponibles.\n\n¿Deseas continuar de todos modos?`
+      );
+    }
+
+    return confirm(`¿Estás seguro de ${action} esta cuenta de email?`);
+  }
+
   async function handleDelete(id: string) {
-    if (!confirm('¿Estás seguro de eliminar esta cuenta de email?')) return;
+    const ok = await confirmImpact('eliminar');
+    if (!ok) return;
 
     setDeletingId(id);
     setError('');
@@ -164,7 +191,8 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
                       variant="outline"
                       size="sm"
                       onClick={() => handleOAuthConnect(
-                        account.provider === 'GMAIL' ? 'outlook' : 'gmail'
+                        account.provider === 'GMAIL' ? 'outlook' : 'gmail',
+                        true
                       )}
                       disabled={connecting !== null}
                     >

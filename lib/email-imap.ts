@@ -1,86 +1,20 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
-import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
+import {
+  EmailAccountConfig,
+  MAILBOX_LOCK_TIMEOUT,
+  IMAP_CONNECT_TIMEOUT,
+  IMAP_SOCKET_TIMEOUT,
+  withTimeout,
+  getImapSettings,
+  getAccessTokenForOAuth,
+  isInvoiceAttachment,
+} from '@/lib/email-file';
 
 const MAX_EMAILS_PER_RUN = 50;
-const IMAP_CONNECT_TIMEOUT = 30_000;
-const IMAP_SOCKET_TIMEOUT = 60_000;
-const MAILBOX_LOCK_TIMEOUT = 30_000;
-
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`Timeout tras ${ms}ms: ${label}`));
-    }, ms);
-  });
-  try {
-    const result = await Promise.race([promise, timeout]);
-    clearTimeout(timer!);
-    return result;
-  } catch (e) {
-    clearTimeout(timer!);
-    throw e;
-  }
-}
-
-export interface EmailAccountConfig {
-  id: string;
-  organizationId: string;
-  email: string;
-  provider: string;
-  isActive: boolean;
-  lastCheckedAt: Date | null;
-  lastEmailUid: bigint | null;
-  createdAt: Date;
-  oauthRefreshToken: string | null;
-  oauthAccessToken: string | null;
-  oauthTokenExpiry: Date | null;
-}
-
-function getImapSettings(provider: string): { host: string; port: number; tls: boolean } {
-  if (provider === 'GMAIL') {
-    return { host: 'imap.gmail.com', port: 993, tls: true };
-  }
-  if (provider === 'OUTLOOK') {
-    return { host: 'outlook.office365.com', port: 993, tls: true };
-  }
-  return { host: '', port: 0, tls: false };
-}
-
-async function getAccessTokenForOAuth(config: EmailAccountConfig): Promise<string | null> {
-  if (config.provider !== 'GMAIL' && config.provider !== 'OUTLOOK') return null;
-  if (!config.oauthRefreshToken) return null;
-
-  const now = new Date();
-  if (config.oauthTokenExpiry && config.oauthAccessToken && config.oauthTokenExpiry > now) {
-    return config.oauthAccessToken;
-  }
-
-  let newToken: { accessToken?: string | null; expiryDate: Date | null };
-  if (config.provider === 'GMAIL') {
-    newToken = await refreshGmailAccessToken(config.oauthRefreshToken);
-  } else {
-    newToken = await refreshOutlookAccessToken(config.oauthRefreshToken);
-  }
-
-  if (newToken.accessToken) {
-    await prisma.emailAccount.update({
-      where: { id: config.id },
-      data: {
-        oauthAccessToken: newToken.accessToken,
-        oauthTokenExpiry: newToken.expiryDate,
-      },
-    });
-    return newToken.accessToken;
-  }
-
-  return null;
-}
 
 export async function testImapConnection(config: {
   provider?: string;
@@ -170,7 +104,7 @@ export async function fetchNewEmails(
       for (const uid of limitedMessages) {
         try {
           const fetchResult = await withTimeout(
-            client.fetchOne(uid, { source: true, uid: true }),
+            client.fetchOne(uid, { source: true }, { uid: true }),
             60_000,
             `fetchOne UID ${uid}`
           );
@@ -206,19 +140,9 @@ export async function fetchNewEmails(
 
           const attachments = parsed.attachments || [];
 
-          const invoiceAttachments = attachments.filter((att: any) => {
-            const contentType = (att.contentType || '').toLowerCase();
-            const filename = (att.filename || '').toLowerCase();
-            return (
-              contentType.includes('pdf') ||
-              contentType.includes('png') ||
-              contentType.includes('jpeg') ||
-              filename.endsWith('.pdf') ||
-              filename.endsWith('.png') ||
-              filename.endsWith('.jpg') ||
-              filename.endsWith('.jpeg')
-            );
-          });
+          const invoiceAttachments = attachments.filter((att: any) =>
+            isInvoiceAttachment(att)
+          );
 
           for (const attachment of invoiceAttachments) {
             try {
@@ -232,43 +156,26 @@ export async function fetchNewEmails(
                     ? 'image/png'
                     : 'image/jpeg');
 
-              const supabase = await createClient();
-
-              const fileExt = fileName.split('.').pop() || 'pdf';
-              const storageFileName = `${nanoid()}.${fileExt}`;
-              const filePath = `${config.organizationId}/${storageFileName}`;
-
-              const { error: uploadError } = await supabase.storage
-                .from('invoices')
-                .upload(filePath, buffer, {
-                  contentType: mimeType,
-                  upsert: false,
-                });
-
-              if (uploadError) {
-                errors.push(`Error subiendo ${fileName}: ${uploadError.message}`);
-                continue;
-              }
-
-              const { data: urlData } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
-
+              const invoiceId = nanoid();
               const invoice = await prisma.invoice.create({
                 data: {
+                  id: invoiceId,
                   organizationId: config.organizationId,
                   fileName,
-                  fileUrl: urlData.publicUrl,
+                  fileUrl: `/api/invoices/${invoiceId}/file`,
                   fileSize: buffer.length,
                   source: 'EMAIL',
                   status: 'PROCESSING',
                   paymentStatus: 'PENDING',
+                  emailAccountId: config.id,
+                  messageUid: message.uid != null ? BigInt(message.uid) : null,
+                  attachmentFilename: fileName,
                 },
               });
 
               const { extractInvoiceData } = await import('@/lib/ia');
               const extraction = await withTimeout(
-                extractInvoiceData(urlData.publicUrl),
+                extractInvoiceData(buffer, mimeType),
                 120_000,
                 'extractInvoiceData'
               );
@@ -305,9 +212,9 @@ export async function fetchNewEmails(
                 });
 
                 if (config.provider === 'GMAIL' && org?.driveRefreshToken) {
-                  await backupToDrive({ fileUrl: urlData.publicUrl, fileName, refreshToken: org.driveRefreshToken, invoiceId: invoice.id });
+                  await backupToDrive({ buffer, mimeType, fileName, refreshToken: org.driveRefreshToken, invoiceId: invoice.id });
                 } else if (config.provider === 'OUTLOOK' && org?.onedriveRefreshToken) {
-                  await backupToOneDrive({ fileUrl: urlData.publicUrl, fileName, refreshToken: org.onedriveRefreshToken, invoiceId: invoice.id });
+                  await backupToOneDrive({ buffer, contentType: mimeType, fileName, refreshToken: org.onedriveRefreshToken, invoiceId: invoice.id });
                 }
               } else {
                 await prisma.invoice.update({
@@ -379,11 +286,11 @@ export async function fetchNewEmails(
   }
 }
 
-async function backupToDrive({ fileUrl, fileName, refreshToken, invoiceId }: { fileUrl: string; fileName: string; refreshToken: string; invoiceId: string }) {
+async function backupToDrive({ buffer, mimeType, fileName, refreshToken, invoiceId }: { buffer: Buffer; mimeType: string; fileName: string; refreshToken: string; invoiceId: string }) {
   try {
     const { uploadToDrive } = await import('@/lib/drive');
     const driveFileId = await withTimeout(
-      uploadToDrive({ fileUrl, fileName, refreshToken }),
+      uploadToDrive({ fileName, refreshToken, buffer, contentType: mimeType }),
       60_000,
       'uploadToDrive'
     );
@@ -396,11 +303,11 @@ async function backupToDrive({ fileUrl, fileName, refreshToken, invoiceId }: { f
   }
 }
 
-async function backupToOneDrive({ fileUrl, fileName, refreshToken, invoiceId }: { fileUrl: string; fileName: string; refreshToken: string; invoiceId: string }) {
+async function backupToOneDrive({ buffer, contentType, fileName, refreshToken, invoiceId }: { buffer: Buffer; contentType: string; fileName: string; refreshToken: string; invoiceId: string }) {
   try {
     const { uploadToOneDrive } = await import('@/lib/onedrive');
     const onedriveFileId = await withTimeout(
-      uploadToOneDrive({ fileUrl, fileName, refreshToken }),
+      uploadToOneDrive({ buffer, contentType, fileName, refreshToken }),
       60_000,
       'uploadToOneDrive'
     );

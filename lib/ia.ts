@@ -48,19 +48,33 @@ IMPORTANTE:
 Responde SOLO con el JSON, sin texto adicional.`;
 
 export async function extractInvoiceData(
-  fileUrl: string
+  fileOrBuffer: string | Buffer,
+  contentTypeHint?: string
 ): Promise<ExtractionResult> {
   try {
-    const response = await fetch(fileUrl);
+    let buffer: Buffer;
+    let contentType: string;
+    let isPdf: boolean;
 
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Error al obtener archivo: HTTP ${response.status}`,
-      };
+    if (typeof fileOrBuffer === 'string') {
+      const response = await fetch(fileOrBuffer);
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Error al obtener archivo: HTTP ${response.status}`,
+        };
+      }
+
+      contentType = response.headers.get('content-type') || '';
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+      isPdf = contentType.includes('pdf') || fileOrBuffer.toLowerCase().includes('.pdf');
+    } else {
+      buffer = fileOrBuffer;
+      contentType = contentTypeHint || '';
+      isPdf = contentType.includes('pdf');
     }
-
-    const contentType = response.headers.get('content-type') || '';
 
     // Detect if response is HTML (error page) instead of a real file
     if (contentType.includes('text/html')) {
@@ -69,10 +83,6 @@ export async function extractInvoiceData(
         error: 'La URL del archivo devuelve HTML en lugar del archivo. Verifica que el bucket de Supabase es público.',
       };
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const isPdf = contentType.includes('pdf') || fileUrl.toLowerCase().includes('.pdf');
 
     let result;
 

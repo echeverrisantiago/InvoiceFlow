@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { extractInvoiceData } from '@/lib/ia';
 import { uploadToDrive } from '@/lib/drive';
 import { Prisma } from '@prisma/client';
+import { getInvoiceFileFromEmail } from '@/lib/email-file';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -49,8 +50,20 @@ export async function POST(
       );
     }
 
+    // Resolve the invoice file. Email-sourced invoices are fetched live from the inbox.
+    let emailFile: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
+    if (invoice.source === 'EMAIL' && invoice.emailAccountId && invoice.messageUid) {
+      emailFile = await getInvoiceFileFromEmail({
+        emailAccountId: invoice.emailAccountId,
+        messageUid: invoice.messageUid,
+        attachmentFilename: invoice.attachmentFilename,
+      });
+    }
+
     // Extract data with AI
-    const extraction = await extractInvoiceData(invoice.fileUrl);
+    const extraction = emailFile
+      ? await extractInvoiceData(emailFile.buffer, emailFile.mimeType)
+      : await extractInvoiceData(invoice.fileUrl);
 
     if (!extraction.success || !extraction.data) {
       // Update status to failed
@@ -92,11 +105,20 @@ export async function POST(
     // Upload to Google Drive (if configured)
     if (invoice.organization.driveRefreshToken) {
       try {
-        const driveFileId = await uploadToDrive({
-          fileUrl: invoice.fileUrl,
-          fileName: invoice.fileName,
-          refreshToken: invoice.organization.driveRefreshToken,
-        });
+        const driveFileId = await uploadToDrive(
+          emailFile
+            ? {
+                fileName: invoice.fileName,
+                refreshToken: invoice.organization.driveRefreshToken,
+                buffer: emailFile.buffer,
+                contentType: emailFile.mimeType,
+              }
+            : {
+                fileUrl: invoice.fileUrl,
+                fileName: invoice.fileName,
+                refreshToken: invoice.organization.driveRefreshToken,
+              }
+        );
 
         // Update with Drive file ID
         await prisma.invoice.update({

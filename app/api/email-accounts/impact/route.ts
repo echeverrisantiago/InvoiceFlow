@@ -1,0 +1,20 @@
+import { NextResponse } from 'next/server';
+import { getTenantContext } from '@/lib/with-tenant';
+import { prisma } from '@/lib/prisma';
+
+export async function GET() {
+  const context = await getTenantContext();
+  if (!context) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
+
+  const affectedInvoices = await prisma.invoice.count({
+    where: {
+      organizationId: context.organization.id,
+      source: 'EMAIL',
+      emailAccountId: { not: null },
+    },
+  });
+
+  return NextResponse.json({ affectedInvoices });
+}

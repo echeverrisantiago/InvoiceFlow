@@ -8,9 +8,11 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 interface UploadParams {
-  fileUrl: string;
+  fileUrl?: string;
   fileName: string;
   refreshToken: string;
+  buffer?: Buffer;
+  contentType?: string;
 }
 
 /**
@@ -20,6 +22,8 @@ export async function uploadToDrive({
   fileUrl,
   fileName,
   refreshToken,
+  buffer,
+  contentType,
 }: UploadParams): Promise<string> {
   try {
     // Set credentials
@@ -29,10 +33,18 @@ export async function uploadToDrive({
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    // Fetch file from URL
-    const response = await fetch(fileUrl);
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let uploadBuffer: Buffer;
+    let mimeType = contentType || 'application/pdf';
+
+    if (buffer) {
+      uploadBuffer = buffer;
+    } else {
+      // Fetch file from URL
+      const response = await fetch(fileUrl!);
+      const arrayBuffer = await response.arrayBuffer();
+      uploadBuffer = Buffer.from(arrayBuffer);
+      mimeType = response.headers.get('content-type') || 'application/pdf';
+    }
 
     // Create folder if doesn't exist
     const folderName = 'FactuMeIA';
@@ -57,14 +69,14 @@ export async function uploadToDrive({
     }
 
     // Upload file
-    const readableStream = Readable.from(buffer);
+    const readableStream = Readable.from(uploadBuffer);
     const file = await drive.files.create({
       requestBody: {
         name: fileName,
         parents: [folderId],
       },
       media: {
-        mimeType: response.headers.get('content-type') || 'application/pdf',
+        mimeType: mimeType,
         body: readableStream,
       },
       fields: 'id',

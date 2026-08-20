@@ -78,35 +78,47 @@ export async function refreshOneDriveAccessToken(refreshToken: string) {
 }
 
 interface UploadParams {
-  fileUrl: string;
+  fileUrl?: string;
   fileName: string;
   refreshToken: string;
+  buffer?: Buffer;
+  contentType?: string;
 }
 
 export async function uploadToOneDrive({
   fileUrl,
   fileName,
   refreshToken,
+  buffer,
+  contentType,
 }: UploadParams): Promise<string> {
   const tokenData = await refreshOneDriveAccessToken(refreshToken);
   const accessToken = tokenData.accessToken;
 
-  const response = await fetch(fileUrl);
-  const arrayBuffer = await response.arrayBuffer();
+  let fileBuffer: Buffer | ArrayBuffer;
+  let mimeType = contentType || 'application/pdf';
+
+  if (buffer) {
+    fileBuffer = buffer;
+  } else {
+    const response = await fetch(fileUrl!);
+    const arrayBuffer = await response.arrayBuffer();
+    fileBuffer = arrayBuffer;
+    mimeType = response.headers.get('content-type') || 'application/pdf';
+  }
 
   const folderName = 'FactuMeIA';
   const folderId = await ensureFolderExists(accessToken, folderName);
 
-  const fileBuffer = Buffer.from(arrayBuffer);
   const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${fileName}:/content`;
 
   const uploadRes = await fetch(uploadUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'Content-Type': response.headers.get('content-type') || 'application/pdf',
+      'Content-Type': mimeType,
     },
-    body: fileBuffer,
+    body: fileBuffer as unknown as BodyInit,
   });
 
   if (!uploadRes.ok) {

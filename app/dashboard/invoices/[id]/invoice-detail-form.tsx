@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ export type EditableInvoice = {
   invoiceItems: InvoiceLineItem[] | null;
   paymentStatus: 'PENDING' | 'PAID' | 'OVERDUE';
   status: string;
+  source: 'EMAIL' | 'MANUAL';
   uploadedBy: {
     name: string | null;
     email: string;
@@ -46,9 +47,6 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     supplierNit: invoice.supplierNit ?? '',
     issueDate: toDateInputValue(invoice.issueDate),
     dueDate: toDateInputValue(invoice.dueDate),
-    subtotal: invoice.subtotal?.toString() ?? '',
-    iva: invoice.iva?.toString() ?? '',
-    total: invoice.total?.toString() ?? '',
     description: invoice.description ?? '',
     internalNotes: invoice.internalNotes ?? '',
     paymentStatus: invoice.paymentStatus,
@@ -61,6 +59,17 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     setForm((current) => ({ ...current, [name]: value }));
   };
 
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+
+  const itemTotals = useMemo(
+    () => items.map((item) => round2((item.quantity ?? 0) * (item.unitPrice ?? 0))),
+    [items]
+  );
+
+  const computedTotal = round2(itemTotals.reduce((sum, total) => sum + total, 0));
+  const computedSubtotal = round2(computedTotal / 1.19);
+  const computedIva = round2(computedTotal - computedSubtotal);
+
   const handleSave = async () => {
     setLoading(true);
 
@@ -72,6 +81,9 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
         },
         body: JSON.stringify({
           ...form,
+          subtotal: computedSubtotal,
+          iva: computedIva,
+          total: computedTotal,
           invoiceItems: items,
         }),
       });
@@ -106,9 +118,25 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
           return { ...item, [field]: value };
         }
 
+        const numeric = value === '' ? null : Number(value);
+
+        if (numeric !== null && numeric <= 0) {
+          return item;
+        }
+
+        if (field === 'quantity' || field === 'unitPrice') {
+          const quantity = field === 'quantity' ? numeric : item.quantity;
+          const unitPrice = field === 'unitPrice' ? numeric : item.unitPrice;
+          return {
+            ...item,
+            [field]: numeric,
+            total: round2((quantity ?? 0) * (unitPrice ?? 0)),
+          };
+        }
+
         return {
           ...item,
-          [field]: value === '' ? null : Number(value),
+          [field]: numeric,
         };
       })
     );
@@ -121,7 +149,7 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
         description: '',
         quantity: null,
         unitPrice: null,
-        total: null,
+        total: 0,
       },
     ]);
   };
@@ -131,6 +159,44 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
   };
 
   const pdf = isPdf(invoice.fileName, invoice.fileUrl);
+
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string>(invoice.fileUrl);
+  const [previewIsPdf, setPreviewIsPdf] = useState<boolean>(pdf);
+
+  useEffect(() => {
+    if (invoice.source !== 'EMAIL') return;
+
+    let objectUrl: string | null = null;
+
+    (async () => {
+      try {
+        const res = await fetch(invoice.fileUrl);
+        if (!res.ok) {
+          let message = 'Vista previa no disponible.';
+          try {
+            const data = await res.json();
+            if (data.error) message = data.error;
+          } catch {
+            /* fallback al mensaje genérico */
+          }
+          setPreviewError(message);
+          return;
+        }
+
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewSrc(objectUrl);
+        setPreviewIsPdf(isPdf(invoice.fileName, '') || blob.type.includes('pdf'));
+      } catch {
+        setPreviewError('Vista previa no disponible. Error al obtener el archivo desde el correo.');
+      }
+    })();
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [invoice.source, invoice.fileUrl, invoice.fileName]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -170,18 +236,6 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
               <Label htmlFor="dueDate">Fecha de vencimiento</Label>
               <Input id="dueDate" name="dueDate" type="date" value={form.dueDate} onChange={handleChange} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="subtotal">Subtotal</Label>
-              <Input id="subtotal" name="subtotal" type="number" step="0.01" value={form.subtotal} onChange={handleChange} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="iva">IVA</Label>
-              <Input id="iva" name="iva" type="number" step="0.01" value={form.iva} onChange={handleChange} />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="total">Total</Label>
-              <Input id="total" name="total" type="number" step="0.01" value={form.total} onChange={handleChange} />
-            </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="description">Descripción</Label>
               <textarea
@@ -216,7 +270,8 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                         <Label>Cantidad</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="1"
+                          min="1"
                           value={item.quantity ?? ''}
                           onChange={(event) => updateItem(index, 'quantity', event.target.value)}
                         />
@@ -225,7 +280,8 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                         <Label>Precio unitario</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="1"
+                          min="1"
                           value={item.unitPrice ?? ''}
                           onChange={(event) => updateItem(index, 'unitPrice', event.target.value)}
                         />
@@ -235,8 +291,8 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                         <Input
                           type="number"
                           step="0.01"
-                          value={item.total ?? ''}
-                          onChange={(event) => updateItem(index, 'total', event.target.value)}
+                          readOnly
+                          value={itemTotals[index] || ''}
                         />
                       </div>
                       <div className="flex items-end">
@@ -257,6 +313,23 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                   No hay ítems detectados todavía.
                 </div>
               )}
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <div className="w-full max-w-xs space-y-2 rounded-md border p-4">
+                <p className="text-sm font-medium">Resumen de totales</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium">{formatCurrency(computedSubtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">IVA (19%)</span>
+                  <span className="font-medium">{formatCurrency(computedIva)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 text-base">
+                  <span className="font-semibold">Total</span>
+                  <span className="font-semibold">{formatCurrency(computedTotal)}</span>
+                </div>
+              </div>
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="internalNotes">Notas internas</Label>
@@ -284,15 +357,24 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
             <CardTitle>Vista previa del archivo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {pdf ? (
+            {previewError ? (
+              <div className="flex min-h-[200px] w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-muted/40 p-6 text-center">
+                <p className="text-sm font-medium text-destructive">Vista previa no disponible</p>
+                <p className="text-sm text-muted-foreground">{previewError}</p>
+                <p className="text-xs text-muted-foreground">
+                  Esta factura fue importada desde un correo electrónico. Si el correo fue
+                  cambiado, eliminado o el mensaje ya no existe, el archivo no puede mostrarse.
+                </p>
+              </div>
+            ) : previewIsPdf ? (
               <iframe
-                src={invoice.fileUrl}
+                src={previewSrc}
                 title={invoice.fileName}
                 className="h-[600px] w-full rounded-md border"
               />
             ) : (
               <img
-                src={invoice.fileUrl}
+                src={previewSrc}
                 alt={invoice.fileName}
                 className="w-full rounded-md border object-contain"
               />
