@@ -43,35 +43,37 @@ async function rollbackTrialUser({
   email: string;
   authUserId: string;
 }) {
-  try {
-    const supabaseAdmin = getAdminClient();
-    await supabaseAdmin.auth.admin.deleteUser(authUserId);
-  } catch (e) {
-    console.error('Failed to delete Supabase auth user during rollback:', e);
+  const supabaseAdmin = getAdminClient();
+  const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
+  if (deleteAuthError) {
+    throw new Error(`No se pudo eliminar usuario de Supabase Auth: ${deleteAuthError.message}`);
   }
+  console.log('Rollback: usuario de Supabase Auth eliminado:', authUserId);
 
-  try {
-    const dbUser = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        memberships: {
-          include: { organization: true },
-          take: 1,
-        },
+  const dbUser = await prisma.user.findUnique({
+    where: { email },
+    include: {
+      memberships: {
+        include: { organization: true },
+        take: 1,
       },
-    });
+    },
+  });
 
-    if (dbUser) {
-      if (dbUser.memberships[0]?.organization) {
-        await prisma.organization.delete({
-          where: { id: dbUser.memberships[0].organization.id },
-        });
-      }
-      await prisma.user.delete({ where: { id: dbUser.id } });
-    }
-  } catch (e) {
-    console.error('Failed to delete DB records during rollback:', e);
+  if (!dbUser) {
+    console.log('Rollback: usuario de DB no encontrado (ya eliminado).');
+    return;
   }
+
+  if (dbUser.memberships[0]?.organization) {
+    await prisma.organization.delete({
+      where: { id: dbUser.memberships[0].organization.id },
+    });
+    console.log('Rollback: organización eliminada:', dbUser.memberships[0].organization.id);
+  }
+
+  await prisma.user.delete({ where: { id: dbUser.id } });
+  console.log('Rollback: usuario de DB eliminado:', dbUser.id);
 }
 
 export async function POST(request: NextRequest) {
@@ -179,7 +181,15 @@ export async function POST(request: NextRequest) {
       });
     } catch (emailError: any) {
       console.error('Activation email error:', emailError);
-      await rollbackTrialUser({ email, authUserId: authData.user.id });
+      try {
+        await rollbackTrialUser({ email, authUserId: authData.user.id });
+      } catch (rollbackError: any) {
+        console.error('Rollback failed:', rollbackError);
+        return NextResponse.json(
+          { error: 'Error crítico: no se pudo enviar el correo ni deshacer la creación. Contacta al soporte.' },
+          { status: 500, headers: corsHeaders(request) }
+        );
+      }
       return NextResponse.json(
         { error: `Error al enviar el correo de activación: ${emailError.message}` },
         { status: 500, headers: corsHeaders(request) }
