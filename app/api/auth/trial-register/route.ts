@@ -36,6 +36,44 @@ export async function OPTIONS(request: NextRequest) {
   });
 }
 
+async function rollbackTrialUser({
+  email,
+  authUserId,
+}: {
+  email: string;
+  authUserId: string;
+}) {
+  try {
+    const supabaseAdmin = getAdminClient();
+    await supabaseAdmin.auth.admin.deleteUser(authUserId);
+  } catch (e) {
+    console.error('Failed to delete Supabase auth user during rollback:', e);
+  }
+
+  try {
+    const dbUser = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        memberships: {
+          include: { organization: true },
+          take: 1,
+        },
+      },
+    });
+
+    if (dbUser) {
+      if (dbUser.memberships[0]?.organization) {
+        await prisma.organization.delete({
+          where: { id: dbUser.memberships[0].organization.id },
+        });
+      }
+      await prisma.user.delete({ where: { id: dbUser.id } });
+    }
+  } catch (e) {
+    console.error('Failed to delete DB records during rollback:', e);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -133,11 +171,20 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    await sendActivationEmail({
-      to: email,
-      name: fullName,
-      temporaryPassword,
-    });
+    try {
+      await sendActivationEmail({
+        to: email,
+        name: fullName,
+        temporaryPassword,
+      });
+    } catch (emailError: any) {
+      console.error('Activation email error:', emailError);
+      await rollbackTrialUser({ email, authUserId: authData.user.id });
+      return NextResponse.json(
+        { error: `Error al enviar el correo de activación: ${emailError.message}` },
+        { status: 500, headers: corsHeaders(request) }
+      );
+    }
 
     return NextResponse.json({
       success: true,
