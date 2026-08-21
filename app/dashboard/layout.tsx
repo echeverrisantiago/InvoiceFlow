@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { OrganizationProvider, useOrganization } from '@/lib/organization-context';
+import { OnboardingTour } from '@/components/onboarding-tour';
 import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
@@ -95,29 +96,36 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex-1 space-y-1 px-3 py-4">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`
-                    flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
-                    transition-colors
-                    ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }
-                  `}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              );
-            })}
+                {navigation.map((item) => {
+                  const isActive = pathname === item.href;
+                  const Icon = item.icon;
+                  const onboardingKey =
+                    item.name === 'Facturas'
+                      ? 'sidebar-facturas'
+                      : item.name === 'Configuración'
+                        ? 'sidebar-config'
+                        : undefined;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      data-onboarding={onboardingKey}
+                      className={`
+                        flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
+                        transition-colors
+                        ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }
+                      `}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {item.name}
+                    </Link>
+                  );
+                })}
           </nav>
 
           <div className="border-t p-4">
@@ -130,6 +138,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               variant="outline"
               className="w-full justify-start mb-2"
+              data-onboarding="theme-toggle"
             >
               {theme === 'dark' ? (
                 <Sun className="mr-2 h-4 w-4" />
@@ -164,6 +173,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-8">
           {children}
         </main>
+
+        <OnboardingTour />
       </div>
     </div>
   );

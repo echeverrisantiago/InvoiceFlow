@@ -145,7 +145,10 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div
+        data-onboarding="dashboard-stats"
+        className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      >
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -291,11 +294,11 @@ export default async function DashboardPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 No hay facturas aún
               </p>
-              <Button asChild>
-                <Link href="/dashboard/invoices/upload">
-                  Subir Primera Factura
-                </Link>
-              </Button>
+                <Button asChild data-onboarding="upload-invoice">
+                    <Link href="/dashboard/invoices/upload">
+                      Subir Primera Factura
+                    </Link>
+                  </Button>
             </div>
           )}
         </CardContent>
