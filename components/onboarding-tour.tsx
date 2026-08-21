@@ -61,7 +61,7 @@ const STEPS: Step[] = [
     target: null,
     title: '¡Todo listo!',
     description:
-      'Ya conoces lo esencial. Comienza subiendo tu primera factura o conectando tu correo para automatizar todo. Tu periodo de prueba de 30 días comienza ahora.',
+      'Ya conoces lo esencial. Comienza subiendo tu primera factura o conectando tu correo para automatizar todo.',
     position: 'center',
   },
 ];
