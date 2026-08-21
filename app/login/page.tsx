@@ -99,6 +99,11 @@ export default function LoginPage() {
                 required
                 disabled={loading}
               />
+              <p className="text-right">
+                <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                  ¿Olvidaste la contraseña?
+                </Link>
+              </p>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">

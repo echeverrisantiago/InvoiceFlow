@@ -223,6 +223,18 @@ model Subscription {
   @@map("subscriptions")
 }
 
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
 model AlertLog {
   id        String   @id @default(cuid())
   type      String   // 'due_date', 'extraction_failed', etc.

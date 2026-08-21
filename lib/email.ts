@@ -66,6 +66,35 @@ export async function sendActivationEmail({
   }
 }
 
+interface PasswordResetEmailParams {
+  to: string;
+  name: string;
+  resetUrl: string;
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  name,
+  resetUrl,
+}: PasswordResetEmailParams) {
+  try {
+    const html = generatePasswordResetEmailHtml({ name, resetUrl });
+
+    const msg = {
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL!,
+      subject: 'Restablece tu contraseña - FactuMeIA',
+      html,
+    };
+
+    await sgMail.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error('SendGrid password reset error:', error);
+    throw new Error(`Error al enviar email de recuperación: ${error.message}`);
+  }
+}
+
 function generateActivationEmailHtml({
   name,
   temporaryPassword,
@@ -138,6 +167,86 @@ function generateActivationEmailHtml({
 
               <p style="color: #9ca3af; margin: 0; font-size: 13px; line-height: 1.5;">
                 Si tienes alguna duda, no dudes en contactarnos respondiendo a este correo.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; margin: 0; font-size: 14px;">
+                &copy; 2026 FactuMeIA. Todos los derechos reservados.
+              </p>
+              <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
+                Este es un correo automático, por favor no responder.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+};
+
+function generatePasswordResetEmailHtml({
+  name,
+  resetUrl,
+}: {
+  name: string;
+  resetUrl: string;
+}): string {
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restablece tu Contraseña</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background-color: #2563eb; padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">FactuMeIA</h1>
+              <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <h2 style="color: #111827; margin: 0 0 10px 0; font-size: 22px;">
+                ¡Hola ${name}!
+              </h2>
+              <p style="color: #6b7280; margin: 0 0 20px 0; font-size: 16px; line-height: 1.5;">
+                Recibimos una solicitud para restablecer la contraseña de tu cuenta en FactuMeIA. Haz clic en el botón de abajo para crear una nueva contraseña.
+              </p>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 25px;">
+                <tr>
+                  <td align="center">
+                    <a href="${resetUrl}"
+                       style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                      Restablecer Contraseña
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 20px;">
+                <tr>
+                  <td style="padding: 12px 16px;">
+                    <p style="color: #92400e; margin: 0; font-size: 13px; line-height: 1.5;">
+                      Este enlace expira en <strong>10 minutos</strong> por seguridad. Si no lo utilizas dentro de ese tiempo, deberás solicitar uno nuevo.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color: #9ca3af; margin: 0 0 10px 0; font-size: 13px; line-height: 1.5;">
+                Si no solicitaste restablecer tu contraseña, puedes ignorar este correo. Tu cuenta permanece segura.
               </p>
             </td>
           </tr>
