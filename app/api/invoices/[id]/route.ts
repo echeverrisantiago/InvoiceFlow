@@ -86,6 +86,7 @@ export async function PATCH(
             name: true,
           },
         },
+        emailAccount: true,
       },
     });
 

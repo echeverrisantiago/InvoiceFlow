@@ -19,6 +19,7 @@ async function getInvoice(invoiceId: string, organizationId: string) {
           email: true,
         },
       },
+      emailAccount: true,
     },
   });
 }

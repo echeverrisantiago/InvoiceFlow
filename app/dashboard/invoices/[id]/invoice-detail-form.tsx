@@ -32,6 +32,10 @@ export type EditableInvoice = {
     name: string | null;
     email: string;
   } | null;
+  emailAccount: {
+    email: string;
+    provider: 'GMAIL' | 'OUTLOOK';
+  } | null;
 };
 
 function isPdf(fileName: string, fileUrl: string) {
@@ -412,6 +416,16 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
               <p className="text-muted-foreground">Subida por</p>
               <p className="font-medium">
                 {invoice.uploadedBy?.name || invoice.uploadedBy?.email || 'No disponible'}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Origen de la factura</p>
+              <p className="font-medium">
+                {invoice.source === 'MANUAL'
+                  ? 'Carga manual'
+                  : invoice.emailAccount
+                    ? `${invoice.emailAccount.provider === 'GMAIL' ? 'Gmail' : 'Outlook'} (${invoice.emailAccount.email})`
+                    : 'Importada desde correo'}
               </p>
             </div>
             <div>
