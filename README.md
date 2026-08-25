@@ -277,14 +277,13 @@ En `vercel.json`:
 
 Nota: El horario está en UTC. `14:00 UTC` = `9:00 AM Colombia` (UTC-5)
 
-## 💳 Planes de Suscripción
+## 💳 Suscripción
 
-| Plan | Precio/Mes | Facturas | Características |
-|------|------------|----------|-----------------|
-| **Starter** | $29.900 COP | 5 por mes | Todas las funciones básicas |
-| **Pro** | $99.900 COP | Ilimitadas | Todas las funciones + soporte prioritario |
+| Plan | Precio/Mes | Características |
+|------|------------|-----------------|
+| **Plan Mensual** | $69.000 COP | Facturas ilimitadas, extracción con IA, backup en la nube, alertas de vencimiento |
 
-- Trial de 14 días al registrarse
+- Trial de 30 días al registrarse
 - Pagos procesados por Mercado Pago
 - Webhooks para activación automática
 

@@ -24,6 +24,9 @@ export interface ExtractionResult {
   rawResponse?: any;
 }
 
+export const PLAN_PRICE = 69000; // COP
+export const PLAN_MAX_INVOICES = -1; // unlimited
+
 export interface PlanLimits {
   STARTER: {
     maxInvoicesPerMonth: number;
@@ -37,11 +40,11 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS: PlanLimits = {
   STARTER: {
-    maxInvoicesPerMonth: 5,
-    price: 29900, // COP
+    maxInvoicesPerMonth: PLAN_MAX_INVOICES,
+    price: PLAN_PRICE,
   },
   PRO: {
-    maxInvoicesPerMonth: -1, // unlimited
-    price: 99900, // COP
+    maxInvoicesPerMonth: PLAN_MAX_INVOICES,
+    price: PLAN_PRICE,
   },
 };

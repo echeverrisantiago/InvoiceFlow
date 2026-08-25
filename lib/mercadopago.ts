@@ -9,7 +9,6 @@ const paymentClient = new Payment(client);
 
 export interface CreateSubscriptionParams {
   organizationId: string;
-  plan: 'STARTER' | 'PRO';
   email: string;
 }
 
@@ -18,29 +17,21 @@ export interface CreateSubscriptionParams {
  */
 export async function createSubscriptionPreference({
   organizationId,
-  plan,
   email,
 }: CreateSubscriptionParams) {
   try {
-    const planPrices = {
-      STARTER: 29900,
-      PRO: 99900,
-    };
-
-    const planNames = {
-      STARTER: 'Plan Starter - InvoiceFlow',
-      PRO: 'Plan Pro - InvoiceFlow',
-    };
+    const planName = 'Plan Mensual - InvoiceFlow';
+    const planPrice = 69000;
 
     const preference = await preferenceClient.create({
       body: {
         items: [
           {
-            id: `${plan.toLowerCase()}-monthly`,
-            title: planNames[plan],
-            description: `Suscripción mensual al ${planNames[plan]}`,
+            id: `monthly`,
+            title: planName,
+            description: `Suscripción mensual al ${planName}`,
             quantity: 1,
-            unit_price: planPrices[plan],
+            unit_price: planPrice,
             currency_id: 'COP',
           },
         ],

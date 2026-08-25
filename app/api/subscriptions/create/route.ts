@@ -16,19 +16,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { plan } = await request.json();
-
-    if (!plan || !['STARTER', 'PRO'].includes(plan)) {
-      return NextResponse.json(
-        { error: 'Plan inválido' },
-        { status: 400 }
-      );
-    }
-
     // Create MP preference
     const preference = await createSubscriptionPreference({
       organizationId: context.organization.id,
-      plan,
       email: context.user.email,
     });
 
@@ -38,12 +28,12 @@ export async function POST(request: NextRequest) {
         organizationId: context.organization.id,
       },
       update: {
-        plan,
+        plan: 'STARTER',
         status: 'TRIALING',
       },
       create: {
         organizationId: context.organization.id,
-        plan,
+        plan: 'STARTER',
         status: 'TRIALING',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

@@ -303,7 +303,7 @@ export default async function SettingsPage({
                   Plan Actual
                 </p>
                 <p className="text-2xl font-bold">
-                  {subscription.plan === 'STARTER' ? 'Starter' : 'Pro'}
+                  Plan Mensual
                 </p>
               </div>
               <div>
