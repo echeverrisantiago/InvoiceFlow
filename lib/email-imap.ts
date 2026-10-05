@@ -84,20 +84,24 @@ export async function fetchNewEmails(
     const lock = await withTimeout(client.getMailboxLock('INBOX'), MAILBOX_LOCK_TIMEOUT, 'getMailboxLock INBOX');
 
     try {
-      const latestUid = client.mailbox ? (client.mailbox.uidNext - 1) : null;
-      console.log(`[fetchNewEmails] lastEmailUid actual: ${config.lastEmailUid ?? 'null'}, último UID en INBOX: ${latestUid ?? 'null'}`);
+      console.log(`[fetchNewEmails] lastEmailUid actual: ${config.lastEmailUid ?? 'null'}`);
 
-      let searchOptions: Record<string, unknown> = { seen: false };
-
+      let searchOptions: Record<string, unknown>;
       if (config.lastEmailUid) {
         searchOptions = { uid: `${Number(config.lastEmailUid) + 1}:*` };
+      } else {
+        searchOptions = { since: config.createdAt };
       }
 
-      const searchResult = await withTimeout(client.search(searchOptions), 30_000, 'búsqueda IMAP');
+      const searchResult = await withTimeout(
+        client.search(searchOptions, { uid: true }),
+        30_000,
+        'búsqueda IMAP'
+      );
       const messages = Array.isArray(searchResult) ? searchResult : [];
       console.log(`[fetchNewEmails] ${messages.length} mensajes encontrados. Procesando hasta ${MAX_EMAILS_PER_RUN}...`);
 
-      const limitedMessages = messages.slice(-MAX_EMAILS_PER_RUN);
+      const limitedMessages = messages.slice(0, MAX_EMAILS_PER_RUN);
       let maxUid = config.lastEmailUid ? Number(config.lastEmailUid) : 0;
       let msgIndex = 0;
 
@@ -157,21 +161,32 @@ export async function fetchNewEmails(
                     : 'image/jpeg');
 
               const invoiceId = nanoid();
-              const invoice = await prisma.invoice.create({
-                data: {
-                  id: invoiceId,
-                  organizationId: config.organizationId,
-                  fileName,
-                  fileUrl: `/api/invoices/${invoiceId}/file`,
-                  fileSize: buffer.length,
-                  source: 'EMAIL',
-                  status: 'PROCESSING',
-                  paymentStatus: 'PENDING',
-                  emailAccountId: config.id,
-                  messageUid: message.uid != null ? BigInt(message.uid) : null,
-                  attachmentFilename: fileName,
-                },
-              });
+              let invoice;
+              try {
+                invoice = await prisma.invoice.create({
+                  data: {
+                    id: invoiceId,
+                    organizationId: config.organizationId,
+                    fileName,
+                    fileUrl: `/api/invoices/${invoiceId}/file`,
+                    fileSize: buffer.length,
+                    source: 'EMAIL',
+                    status: 'PROCESSING',
+                    paymentStatus: 'PENDING',
+                    emailAccountId: config.id,
+                    messageUid: message.uid != null ? BigInt(message.uid) : null,
+                    attachmentFilename: fileName,
+                  },
+                });
+              } catch (createError) {
+                if (
+                  createError instanceof Prisma.PrismaClientKnownRequestError &&
+                  createError.code === 'P2002'
+                ) {
+                  continue;
+                }
+                throw createError;
+              }
 
               const { extractInvoiceData } = await import('@/lib/ia');
               const extraction = await withTimeout(
@@ -242,7 +257,7 @@ export async function fetchNewEmails(
         }
       }
 
-      if (maxUid > 0 && processed > 0) {
+      if (maxUid > 0) {
         await withTimeout(
           prisma.emailAccount.update({
             where: { id: config.id },

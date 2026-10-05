@@ -162,13 +162,14 @@ model Invoice {
   uploadedBy     User?        @relation("InvoiceUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
   emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
 
-  @@index([organizationId])
+@@index([organizationId])
   @@index([emailAccountId])
   @@index([issueDate])
   @@index([dueDate])
   @@index([status])
   @@index([paymentStatus])
   @@index([supplier])
+  @@unique([emailAccountId, messageUid, attachmentFilename])
   @@map("invoices")
 }
 
