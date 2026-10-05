@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
+import { TRIAL_MAX_INVOICES } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,32 @@ export async function POST(request: NextRequest) {
         { error: 'No autenticado' },
         { status: 401 }
       );
+    }
+
+    if (!context.subscription.isActive) {
+      return NextResponse.json(
+        {
+          error:
+            'Tu periodo de prueba ha terminado. Suscríbete para continuar subiendo facturas.',
+          code: 'SUBSCRIPTION_REQUIRED',
+        },
+        { status: 402 }
+      );
+    }
+
+    if (context.subscription.isTrial) {
+      const invoiceCount = await prisma.invoice.count({
+        where: { organizationId: context.organization.id },
+      });
+      if (invoiceCount >= TRIAL_MAX_INVOICES) {
+        return NextResponse.json(
+          {
+            error: `Has alcanzado el límite de ${TRIAL_MAX_INVOICES} facturas de tu periodo de prueba. Suscríbete para facturas ilimitadas.`,
+            code: 'TRIAL_LIMIT_REACHED',
+          },
+          { status: 402 }
+        );
+      }
     }
 
     // Get file from form data

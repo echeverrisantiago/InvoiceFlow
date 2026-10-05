@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/with-tenant';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   const context = await getTenantContext();
@@ -11,7 +12,13 @@ export async function GET() {
     );
   }
 
+  const invoiceCount = await prisma.invoice.count({
+    where: { organizationId: context.organization.id },
+  });
+
   return NextResponse.json({
     organization: context.organization,
+    subscription: context.subscription,
+    invoiceCount,
   });
 }

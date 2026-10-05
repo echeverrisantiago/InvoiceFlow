@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { PLAN_PRICE } from '@/types';
 
@@ -25,6 +25,42 @@ const features = [
 
 export default function BillingPage() {
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNotice(params.get('notice'));
+  }, []);
+
+  const noticeConfig: Record<
+    string,
+    { message: string; type: 'warning' | 'error' | 'success' | 'info' }
+  > = {
+    subscription_required: {
+      message:
+        'Tu periodo de prueba ha terminado. Suscríbete para continuar usando FactuMeIA con facturas ilimitadas.',
+      type: 'warning',
+    },
+    trial_limit: {
+      message:
+        'Alcanzaste el límite de facturas de tu periodo de prueba. Suscríbete para facturas ilimitadas.',
+      type: 'warning',
+    },
+    success: {
+      message: '¡Pago exitoso! Tu suscripción está activa.',
+      type: 'success',
+    },
+    failure: {
+      message: 'El pago no se completó. Intenta nuevamente.',
+      type: 'error',
+    },
+    pending: {
+      message: 'Tu pago está pendiente de confirmación.',
+      type: 'info',
+    },
+  };
+
+  const currentNotice = notice ? noticeConfig[notice] : null;
 
   const handleSubscribe = async () => {
     setLoading(true);
@@ -62,6 +98,33 @@ export default function BillingPage() {
           Un solo plan con todas las funcionalidades de FactuMeIA
         </p>
       </div>
+
+      {/* Notice banner */}
+      {currentNotice && (
+        <div
+          className={`
+            flex items-start gap-3 rounded-lg border p-4
+            ${
+              currentNotice.type === 'success'
+                ? 'border-green-300 bg-green-50 text-green-800'
+                : currentNotice.type === 'error'
+                  ? 'border-red-300 bg-red-50 text-red-800'
+                  : currentNotice.type === 'info'
+                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                    : 'border-amber-300 bg-amber-50 text-amber-800'
+            }
+          `}
+        >
+          {currentNotice.type === 'success' ? (
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+          ) : currentNotice.type === 'error' ? (
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+          ) : (
+            <Info className="h-5 w-5 shrink-0" />
+          )}
+          <p className="text-sm font-medium">{currentNotice.message}</p>
+        </div>
+      )}
 
       {/* Single Plan Card */}
       <div className="max-w-md">

@@ -25,8 +25,18 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
-  const { organization } = useOrganization();
+  const { organization, subscription, loading } = useOrganization();
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    if (loading) return;
+    if (
+      subscription?.requiresRenewal &&
+      !pathname.startsWith('/dashboard/settings/billing')
+    ) {
+      router.push('/dashboard/settings/billing?notice=subscription_required');
+    }
+  }, [subscription, loading, router, pathname]);
 
   useEffect(() => {
     const checkTrialStatus = async () => {

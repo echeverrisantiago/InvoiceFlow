@@ -29,16 +29,32 @@ export async function GET(request: NextRequest) {
     }
 
     const accounts = await withTimeout(
-      prisma.emailAccount.findMany({ where: { isActive: true } }),
+      prisma.emailAccount.findMany({
+        where: { isActive: true },
+        include: {
+          organization: { include: { subscription: true } },
+        },
+      }),
       30_000,
       'consulta cuentas activas'
     );
+
+    const now = new Date();
+    const activeAccounts = accounts.filter((account) => {
+      const sub = account.organization.subscription;
+      if (!sub) return false;
+      if (sub.status === 'ACTIVE') return true;
+      if (sub.status === 'TRIALING') {
+        return !!sub.currentPeriodEnd && sub.currentPeriodEnd > now;
+      }
+      return false;
+    });
 
     const results = [];
     const startTime = Date.now();
     const GLOBAL_TIMEOUT = 240_000;
 
-    for (const account of accounts) {
+    for (const account of activeAccounts) {
       if (Date.now() - startTime > GLOBAL_TIMEOUT) {
         results.push({
           accountId: account.id,

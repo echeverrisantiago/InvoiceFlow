@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
+import { useOrganization } from '@/lib/organization-context';
+import { TRIAL_MAX_INVOICES } from '@/types';
 
 export default function UploadInvoicePage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<string>('');
   const router = useRouter();
+  const { subscription, invoiceCount } = useOrganization();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -50,7 +53,10 @@ export default function UploadInvoicePage() {
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'Error al subir archivo');
+        const error = new Error(errorData.error || 'Error al subir archivo');
+        (error as any).status = uploadResponse.status;
+        (error as any).code = errorData.code;
+        throw error;
       }
 
       const { invoiceId } = await uploadResponse.json();
@@ -77,6 +83,13 @@ export default function UploadInvoicePage() {
     } catch (error: any) {
       console.error('Upload error:', error);
       toast.error(error.message || 'Error al procesar factura');
+      if (error.status === 402) {
+        const notice =
+          error.code === 'TRIAL_LIMIT_REACHED'
+            ? 'trial_limit'
+            : 'subscription_required';
+        router.push(`/dashboard/settings/billing?notice=${notice}`);
+      }
       setProgress('');
     } finally {
       setUploading(false);
@@ -92,6 +105,17 @@ export default function UploadInvoicePage() {
           Sube un PDF o imagen de tu factura para extraer los datos automáticamente
         </p>
       </div>
+
+      {/* Trial usage banner */}
+      {subscription?.isTrial && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Has usado <strong className="text-foreground">{invoiceCount} de {TRIAL_MAX_INVOICES}</strong> facturas de tu periodo de prueba.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Upload Card */}
       <Card>

@@ -25,6 +25,7 @@ export interface ExtractionResult {
 }
 
 export const PLAN_PRICE = 69000; // COP
+export const TRIAL_MAX_INVOICES = 50;
 export const PLAN_MAX_INVOICES = -1; // unlimited
 
 export interface PlanLimits {

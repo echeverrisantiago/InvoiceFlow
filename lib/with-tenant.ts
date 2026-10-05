@@ -3,6 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { cache } from 'react';
 
+export interface TenantSubscription {
+  status: string;
+  plan: string;
+  currentPeriodEnd: Date | null;
+  isActive: boolean;
+  isTrial: boolean;
+  requiresRenewal: boolean;
+}
+
 export interface TenantContext {
   user: {
     id: string;
@@ -15,6 +24,7 @@ export interface TenantContext {
     name: string;
     role: 'ADMIN' | 'MEMBER';
   };
+  subscription: TenantSubscription;
 }
 
 /**
@@ -60,6 +70,16 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
 
   const membership = user.memberships[0];
 
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: membership.organization.id },
+  });
+
+  const now = new Date();
+  const isTrial = subscription?.status === 'TRIALING';
+  const expired =
+    !!subscription?.currentPeriodEnd && subscription.currentPeriodEnd < now;
+  const isActive = subscription?.status === 'ACTIVE' || (isTrial && !expired);
+
   return {
     user: {
       id: user.id,
@@ -71,6 +91,14 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
       id: membership.organization.id,
       name: membership.organization.name,
       role: membership.role,
+    },
+    subscription: {
+      status: subscription?.status ?? 'NONE',
+      plan: subscription?.plan ?? 'STARTER',
+      currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+      isActive,
+      isTrial,
+      requiresRenewal: !isActive,
     },
   };
 });

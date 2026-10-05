@@ -30,6 +30,17 @@ export async function POST(
       );
     }
 
+    if (!context.subscription.isActive) {
+      return NextResponse.json(
+        {
+          error:
+            'Tu periodo de prueba ha terminado. Suscríbete para continuar.',
+          code: 'SUBSCRIPTION_REQUIRED',
+        },
+        { status: 402 }
+      );
+    }
+
     const { id } = await params;
 
     // Get invoice
