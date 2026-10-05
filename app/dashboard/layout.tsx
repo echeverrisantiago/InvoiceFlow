@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { OrganizationProvider, useOrganization } from '@/lib/organization-context';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { TrialBanner } from '@/components/trial-banner';
 import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
@@ -181,6 +182,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-8">
+          <TrialBanner />
           {children}
         </main>
 
