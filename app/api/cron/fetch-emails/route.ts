@@ -90,6 +90,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
+      timestampLocal: new Date().toLocaleString('es-CO', {
+        timeZone: 'America/Bogota',
+      }),
       accountsProcessed: results.length,
       totalInvoicesCreated: results.reduce((sum, r) => sum + r.processed, 0),
       details: results,

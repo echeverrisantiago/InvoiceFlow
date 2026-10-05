@@ -135,6 +135,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
+      timestampLocal: new Date().toLocaleString('es-CO', {
+        timeZone: 'America/Bogota',
+      }),
       alertsSent: results.filter((r) => r.status === 'sent').length,
       alertsFailed: results.filter((r) => r.status === 'failed').length,
       alertsSkipped: results.filter((r) => r.status === 'skipped').length,

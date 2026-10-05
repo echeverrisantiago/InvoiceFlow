@@ -269,7 +269,7 @@ En `vercel.json`:
   "crons": [
     {
       "path": "/api/cron/check-due-invoices",
-      "schedule": "0 14 * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
