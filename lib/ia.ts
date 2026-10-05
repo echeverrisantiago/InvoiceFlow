@@ -4,13 +4,13 @@ import type { ExtractionResult, InvoiceData } from '@/types';
 
 const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
-  model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  model: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b',
   temperature: 0,
 });
 
 const textModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
-  model: 'llama-3.3-70b-versatile',
+  model: process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b',
   temperature: 0,
 });
 
