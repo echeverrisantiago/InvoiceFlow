@@ -17,7 +17,7 @@ interface Step {
 const STEPS: Step[] = [
   {
     target: null,
-    title: '¡Bienvenido a FactuMeIA!',
+    title: '¡Bienvenido a EntraFactura!',
     description:
       'Gestiona tus facturas de forma inteligente con IA. Extrae datos automáticamente, recibe alertas de vencimiento y mantén todo organizado en un solo lugar.',
     position: 'center',

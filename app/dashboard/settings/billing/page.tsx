@@ -38,7 +38,7 @@ export default function BillingPage() {
   > = {
     subscription_required: {
       message:
-        'Tu periodo de prueba ha terminado. Suscríbete para continuar usando FactuMeIA con facturas ilimitadas.',
+        'Tu periodo de prueba ha terminado. Suscríbete para continuar usando EntraFactura con facturas ilimitadas.',
       type: 'warning',
     },
     trial_limit: {
@@ -95,7 +95,7 @@ export default function BillingPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Facturación</h1>
         <p className="text-muted-foreground">
-          Un solo plan con todas las funcionalidades de FactuMeIA
+          Un solo plan con todas las funcionalidades de EntraFactura
         </p>
       </div>
 

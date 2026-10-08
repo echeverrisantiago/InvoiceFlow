@@ -1,6 +1,6 @@
-# 🚀 Quick Setup Guide for FactuMeIA MVP
+# 🚀 Quick Setup Guide for EntraFactura MVP
 
-Follow these steps in order to get FactuMeIA running locally.
+Follow these steps in order to get EntraFactura running locally.
 
 ## ✅ Prerequisites Checklist
 
@@ -118,7 +118,7 @@ Visit http://localhost:3000 and test:
 2. Click "Conectar Google Drive"
 3. Authorize your Google account
 4. Upload another invoice
-5. Check your Google Drive for "FactuMeIA" folder
+5. Check your Google Drive for "EntraFactura" folder
 
 #### Test Subscription Flow
 1. Go to Settings > Billing
@@ -134,7 +134,7 @@ Visit http://localhost:3000 and test:
 ```bash
 git init
 git add .
-git commit -m "Initial FactuMeIA MVP"
+git commit -m "Initial EntraFactura MVP"
 git remote add origin <your-repo-url>
 git push -u origin main
 ```

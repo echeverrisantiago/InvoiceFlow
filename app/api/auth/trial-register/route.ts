@@ -6,8 +6,8 @@ import { sendActivationEmail } from '@/lib/email';
 import { generateTemporaryPassword } from '@/lib/utils';
 
 const allowedOrigins = [
-  'https://landing.factumeia.com',
-  'https://factumeia.com',
+  'https://landing.entrafactura.com',
+  'https://entrafactura.com',
   'http://localhost:3000',
 ];
 

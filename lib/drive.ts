@@ -47,7 +47,7 @@ export async function uploadToDrive({
     }
 
     // Create folder if doesn't exist
-    const folderName = 'FactuMeIA';
+    const folderName = 'EntraFactura';
     let folderId: string | undefined;
 
     const folderSearch = await drive.files.list({

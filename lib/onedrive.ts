@@ -107,7 +107,7 @@ export async function uploadToOneDrive({
     mimeType = response.headers.get('content-type') || 'application/pdf';
   }
 
-  const folderName = 'FactuMeIA';
+  const folderName = 'EntraFactura';
   const folderId = await ensureFolderExists(accessToken, folderName);
 
   const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${fileName}:/content`;

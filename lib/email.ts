@@ -54,7 +54,7 @@ export async function sendActivationEmail({
     const msg = {
       to,
       from: process.env.SENDGRID_FROM_EMAIL!,
-      subject: 'Activa tu cuenta en FactuMeIA - Acceso a tu periodo de prueba',
+      subject: 'Activa tu cuenta en EntraFactura - Acceso a tu periodo de prueba',
       html,
     };
 
@@ -83,7 +83,7 @@ export async function sendPasswordResetEmail({
     const msg = {
       to,
       from: process.env.SENDGRID_FROM_EMAIL!,
-      subject: 'Restablece tu contraseña - FactuMeIA',
+      subject: 'Restablece tu contraseña - EntraFactura',
       html,
     };
 
@@ -119,7 +119,7 @@ function generateActivationEmailHtml({
         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
           <tr>
             <td style="background-color: #2563eb; padding: 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">FactuMeIA</h1>
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">EntraFactura</h1>
               <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
             </td>
           </tr>
@@ -129,7 +129,7 @@ function generateActivationEmailHtml({
                 ¡Hola ${name}!
               </h2>
               <p style="color: #6b7280; margin: 0 0 20px 0; font-size: 16px; line-height: 1.5;">
-                Tu cuenta en FactuMeIA ha sido creada exitosamente. Has comenzado tu <strong>periodo de prueba gratuito de 30 días</strong> con acceso completo a todas las funcionalidades.
+                Tu cuenta en EntraFactura ha sido creada exitosamente. Has comenzado tu <strong>periodo de prueba gratuito de 30 días</strong> con acceso completo a todas las funcionalidades.
               </p>
 
               <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; border-left: 4px solid #22c55e; margin-bottom: 25px;">
@@ -173,7 +173,7 @@ function generateActivationEmailHtml({
           <tr>
             <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                &copy; 2026 FactuMeIA. Todos los derechos reservados.
+                &copy; 2026 EntraFactura. Todos los derechos reservados.
               </p>
               <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
                 Este es un correo automático, por favor no responder.
@@ -211,7 +211,7 @@ function generatePasswordResetEmailHtml({
         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
           <tr>
             <td style="background-color: #2563eb; padding: 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">FactuMeIA</h1>
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">EntraFactura</h1>
               <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
             </td>
           </tr>
@@ -221,7 +221,7 @@ function generatePasswordResetEmailHtml({
                 ¡Hola ${name}!
               </h2>
               <p style="color: #6b7280; margin: 0 0 20px 0; font-size: 16px; line-height: 1.5;">
-                Recibimos una solicitud para restablecer la contraseña de tu cuenta en FactuMeIA. Haz clic en el botón de abajo para crear una nueva contraseña.
+                Recibimos una solicitud para restablecer la contraseña de tu cuenta en EntraFactura. Haz clic en el botón de abajo para crear una nueva contraseña.
               </p>
 
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 25px;">
@@ -253,7 +253,7 @@ function generatePasswordResetEmailHtml({
           <tr>
             <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                &copy; 2026 FactuMeIA. Todos los derechos reservados.
+                &copy; 2026 EntraFactura. Todos los derechos reservados.
               </p>
               <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
                 Este es un correo automático, por favor no responder.
@@ -310,7 +310,7 @@ function generateDueAlertHtml(
           <!-- Header -->
           <tr>
             <td style="background-color: #2563eb; padding: 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">FactuMeIA</h1>
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">EntraFactura</h1>
               <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
             </td>
           </tr>
@@ -363,7 +363,7 @@ function generateDueAlertHtml(
           <tr>
             <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                © 2026 FactuMeIA. Todos los derechos reservados.
+                © 2026 EntraFactura. Todos los derechos reservados.
               </p>
               <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
                 Este es un correo automático, por favor no responder.
