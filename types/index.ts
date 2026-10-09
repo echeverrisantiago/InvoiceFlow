@@ -24,28 +24,79 @@ export interface ExtractionResult {
   rawResponse?: any;
 }
 
-export const PLAN_PRICE = 69000; // COP
-export const TRIAL_MAX_INVOICES = 50;
-export const PLAN_MAX_INVOICES = -1; // unlimited
+export type PlanKey = 'STARTER' | 'PRO' | 'BUSINESS';
 
-export interface PlanLimits {
-  STARTER: {
-    maxInvoicesPerMonth: number;
-    price: number;
-  };
-  PRO: {
-    maxInvoicesPerMonth: number;
-    price: number;
-  };
+export interface PlanDefinition {
+  key: PlanKey;
+  name: string;
+  price: number;
+  maxInvoicesPerMonth: number;
+  maxEmailAccounts: number;
+  features: string[];
 }
 
-export const PLAN_LIMITS: PlanLimits = {
+export const PLANS: Record<PlanKey, PlanDefinition> = {
   STARTER: {
-    maxInvoicesPerMonth: PLAN_MAX_INVOICES,
-    price: PLAN_PRICE,
+    key: 'STARTER',
+    name: 'Básico',
+    price: 69000,
+    maxInvoicesPerMonth: 50,
+    maxEmailAccounts: 1,
+    features: [
+      '50 facturas por mes',
+      'Extracción de datos con IA',
+      'Conexión de 1 correo (Gmail / Outlook)',
+      'Backup en Google Drive / OneDrive',
+      'Alertas de vencimiento',
+      'Dashboard completo y análisis',
+      'Soporte',
+    ],
   },
   PRO: {
-    maxInvoicesPerMonth: PLAN_MAX_INVOICES,
-    price: PLAN_PRICE,
+    key: 'PRO',
+    name: 'Profesional',
+    price: 119000,
+    maxInvoicesPerMonth: 200,
+    maxEmailAccounts: 2,
+    features: [
+      '200 facturas por mes',
+      'Extracción de datos con IA',
+      'Conexión de 2 correos (Gmail / Outlook)',
+      'Backup en Google Drive / OneDrive',
+      'Alertas de vencimiento',
+      'Dashboard completo y análisis',
+      'Soporte',
+    ],
+  },
+  BUSINESS: {
+    key: 'BUSINESS',
+    name: 'Empresarial',
+    price: 265000,
+    maxInvoicesPerMonth: 500,
+    maxEmailAccounts: 3,
+    features: [
+      '500 facturas por mes',
+      'Extracción de datos con IA',
+      'Conexión de 3 correos (Gmail / Outlook)',
+      'Backup en Google Drive / OneDrive',
+      'Alertas de vencimiento',
+      'Dashboard completo y análisis',
+      'Soporte',
+    ],
   },
 };
+
+export const PLAN_KEYS: PlanKey[] = ['STARTER', 'PRO', 'BUSINESS'];
+
+export const DEFAULT_PLAN: PlanKey = 'STARTER';
+
+export function isPlanKey(value: unknown): value is PlanKey {
+  return typeof value === 'string' && PLAN_KEYS.includes(value as PlanKey);
+}
+
+export function getPlanDefinition(plan?: string | null): PlanDefinition {
+  return isPlanKey(plan) ? PLANS[plan] : PLANS[DEFAULT_PLAN];
+}
+
+// Kept for backwards compatibility with existing trial UI references.
+export const TRIAL_MAX_INVOICES = PLANS.STARTER.maxInvoicesPerMonth;

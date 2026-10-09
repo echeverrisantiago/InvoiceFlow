@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGmailTokensFromCode } from '@/lib/email-oauth';
 import { getTenantContext } from '@/lib/with-tenant';
+import { getEmailAccountQuota } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
@@ -47,26 +48,53 @@ export async function GET(request: NextRequest) {
       ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email
       : null;
 
-    await prisma.emailAccount.deleteMany({
-      where: {
-        organizationId: context.organization.id,
-        provider: { in: ['GMAIL', 'OUTLOOK'] },
-      },
-    });
+    const organizationId = context.organization.id;
 
-    await prisma.emailAccount.create({
-      data: {
-        organizationId: context.organization.id,
-        email: email || 'gmail-user@unknown.com',
-        provider: 'GMAIL',
-        oauthRefreshToken: tokens.refresh_token,
-        oauthAccessToken: tokens.access_token || null,
-        oauthTokenExpiry: tokens.expiry_date
-          ? new Date(tokens.expiry_date)
-          : null,
-        isActive: true,
-      },
-    });
+    // Reconnecting an already linked mailbox just refreshes its tokens.
+    const existing = email
+      ? await prisma.emailAccount.findFirst({
+          where: { organizationId, email },
+        })
+      : null;
+
+    if (existing) {
+      await prisma.emailAccount.update({
+        where: { id: existing.id },
+        data: {
+          provider: 'GMAIL',
+          oauthRefreshToken: tokens.refresh_token,
+          oauthAccessToken: tokens.access_token || null,
+          oauthTokenExpiry: tokens.expiry_date
+            ? new Date(tokens.expiry_date)
+            : null,
+          isActive: true,
+        },
+      });
+    } else {
+      const quota = await getEmailAccountQuota(organizationId);
+      if (!quota.allowed) {
+        return NextResponse.redirect(
+          new URL(
+            '/dashboard/settings?error=email_limit_reached&limit=' + quota.limit,
+            request.url
+          )
+        );
+      }
+
+      await prisma.emailAccount.create({
+        data: {
+          organizationId,
+          email: email || 'gmail-user@unknown.com',
+          provider: 'GMAIL',
+          oauthRefreshToken: tokens.refresh_token,
+          oauthAccessToken: tokens.access_token || null,
+          oauthTokenExpiry: tokens.expiry_date
+            ? new Date(tokens.expiry_date)
+            : null,
+          isActive: true,
+        },
+      });
+    }
 
     return NextResponse.redirect(
       new URL('/dashboard/settings?success=email_connected&provider=gmail', request.url)

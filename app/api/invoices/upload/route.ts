@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
-import { TRIAL_MAX_INVOICES } from '@/types';
+import { getInvoiceQuota } from '@/lib/plans';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,14 +28,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (context.subscription.isTrial) {
-      const invoiceCount = await prisma.invoice.count({
-        where: { organizationId: context.organization.id },
-      });
-      if (invoiceCount >= TRIAL_MAX_INVOICES) {
+      const quota = await getInvoiceQuota(context.organization.id);
+      if (quota.used >= quota.limit) {
         return NextResponse.json(
           {
-            error: `Has alcanzado el límite de ${TRIAL_MAX_INVOICES} facturas de tu periodo de prueba. Suscríbete para facturas ilimitadas.`,
+            error: `Has alcanzado el límite de ${quota.limit} facturas de tu periodo de prueba. Suscríbete para continuar.`,
             code: 'TRIAL_LIMIT_REACHED',
+          },
+          { status: 402 }
+        );
+      }
+    } else {
+      const quota = await getInvoiceQuota(context.organization.id);
+      if (quota.used >= quota.limit) {
+        return NextResponse.json(
+          {
+            error: `Has alcanzado el límite de ${quota.limit} facturas por mes de tu plan ${quota.plan.name}. Mejora tu plan para continuar.`,
+            code: 'PLAN_LIMIT_REACHED',
           },
           { status: 402 }
         );

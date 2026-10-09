@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Check, Loader2, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { PLAN_PRICE } from '@/types';
+import { PLANS, PLAN_KEYS, PlanKey } from '@/types';
+import { useOrganization } from '@/lib/organization-context';
 
 declare global {
   interface Window {
@@ -13,19 +14,19 @@ declare global {
   }
 }
 
-const features = [
-  'Facturas ilimitadas',
-  'Extracción de datos con IA',
-  'Backup en Google Drive / OneDrive',
-  'Conexión de correo (Gmail / Outlook)',
-  'Alertas de vencimiento',
-  'Dashboard completo y análisis',
-  'Soporte',
-];
+const formatCop = (value: number) =>
+  new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+  }).format(value);
 
 export default function BillingPage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<PlanKey | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const { subscription } = useOrganization();
+
+  const currentPlan = subscription?.plan as PlanKey | undefined;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -38,12 +39,17 @@ export default function BillingPage() {
   > = {
     subscription_required: {
       message:
-        'Tu periodo de prueba ha terminado. Suscríbete para continuar usando EntraFactura con facturas ilimitadas.',
+        'Tu periodo de prueba ha terminado. Elige un plan para continuar usando EntraFactura.',
       type: 'warning',
     },
     trial_limit: {
       message:
-        'Alcanzaste el límite de facturas de tu periodo de prueba. Suscríbete para facturas ilimitadas.',
+        'Alcanzaste el límite de facturas de tu periodo de prueba. Elige un plan para continuar.',
+      type: 'warning',
+    },
+    plan_limit: {
+      message:
+        'Alcanzaste el límite de facturas de tu plan para este período. Mejora tu plan para continuar.',
       type: 'warning',
     },
     success: {
@@ -62,8 +68,8 @@ export default function BillingPage() {
 
   const currentNotice = notice ? noticeConfig[notice] : null;
 
-  const handleSubscribe = async () => {
-    setLoading(true);
+  const handleSubscribe = async (plan: PlanKey) => {
+    setLoading(plan);
 
     try {
       const response = await fetch('/api/subscriptions/create', {
@@ -71,7 +77,7 @@ export default function BillingPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ plan }),
       });
 
       if (!response.ok) {
@@ -85,7 +91,7 @@ export default function BillingPage() {
       window.location.href = initPoint;
     } catch (error: any) {
       toast.error(error.message || 'Error al procesar suscripción');
-      setLoading(false);
+      setLoading(null);
     }
   };
 
@@ -95,7 +101,7 @@ export default function BillingPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Facturación</h1>
         <p className="text-muted-foreground">
-          Un solo plan con todas las funcionalidades de EntraFactura
+          Elige el plan que mejor se adapte a tu operación
         </p>
       </div>
 
@@ -126,48 +132,65 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Single Plan Card */}
-      <div className="max-w-md">
-        <Card className="border-primary shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-2xl">Plan Mensual</CardTitle>
-            <CardDescription>
-              <span className="text-3xl font-bold text-foreground">
-                {new Intl.NumberFormat('es-CO', {
-                  style: 'currency',
-                  currency: 'COP',
-                  minimumFractionDigits: 0,
-                }).format(PLAN_PRICE)}
-              </span>
-              <span className="text-muted-foreground">/mes</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-3">
-              {features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <Check className="h-5 w-5 shrink-0 text-primary" />
-                  <span className="text-sm">{feature}</span>
-                </li>
-              ))}
-            </ul>
-            <Button
-              onClick={handleSubscribe}
-              disabled={loading}
-              className="w-full"
-              size="lg"
+      {/* Plans */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {PLAN_KEYS.map((key) => {
+          const plan = PLANS[key];
+          const isCurrent = currentPlan === key;
+          const isFeatured = key === 'PRO';
+
+          return (
+            <Card
+              key={key}
+              className={isFeatured ? 'border-primary shadow-lg' : ''}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Procesando...
-                </>
-              ) : (
-                `Suscribirse por $69,000/mes`
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl">{plan.name}</CardTitle>
+                  {isCurrent && (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-400">
+                      Plan actual
+                    </span>
+                  )}
+                </div>
+                <CardDescription>
+                  <span className="text-3xl font-bold text-foreground">
+                    {formatCop(plan.price)}
+                  </span>
+                  <span className="text-muted-foreground">/mes</span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ul className="space-y-3">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <Check className="h-5 w-5 shrink-0 text-primary" />
+                      <span className="text-sm">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  onClick={() => handleSubscribe(key)}
+                  disabled={loading !== null}
+                  className="w-full"
+                  variant={isFeatured ? 'default' : 'outline'}
+                  size="lg"
+                >
+                  {loading === key ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Procesando...
+                    </>
+                  ) : isCurrent ? (
+                    `Renovar por ${formatCop(plan.price)}/mes`
+                  ) : (
+                    `Suscribirse por ${formatCop(plan.price)}/mes`
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* FAQ */}
@@ -177,10 +200,25 @@ export default function BillingPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
+            <h4 className="font-semibold mb-1">¿Puedo cambiar de plan en cualquier momento?</h4>
+            <p className="text-sm text-muted-foreground">
+              Sí, puedes suscribirte a cualquiera de los planes en cualquier
+              momento. El nuevo plan se activa al confirmar el pago.
+            </p>
+          </div>
+          <div>
             <h4 className="font-semibold mb-1">¿Puedo cancelar en cualquier momento?</h4>
             <p className="text-sm text-muted-foreground">
               Sí, puedes cancelar tu suscripción en cualquier momento. No hay
               compromisos a largo plazo.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold mb-1">¿Cómo se cuentan las facturas del plan?</h4>
+            <p className="text-sm text-muted-foreground">
+              El límite de facturas se cuenta por período de facturación y se
+              reinicia con cada pago mensual. Aplica tanto a facturas subidas
+              manualmente como a las importadas desde tus correos.
             </p>
           </div>
           <div>

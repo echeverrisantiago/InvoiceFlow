@@ -13,6 +13,7 @@ import {
   getAccessTokenForOAuth,
   isInvoiceAttachment,
 } from '@/lib/email-file';
+import { getInvoiceQuota } from '@/lib/plans';
 
 const MAX_EMAILS_PER_RUN = 50;
 
@@ -60,6 +61,19 @@ export async function fetchNewEmails(
   if (!accessToken) {
     return { success: false, processed: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
   }
+
+  const quota = await getInvoiceQuota(config.organizationId);
+  let remainingQuota = quota.remaining;
+  if (remainingQuota <= 0) {
+    return {
+      success: true,
+      processed: 0,
+      errors: [
+        `Límite de ${quota.limit} facturas/mes del plan ${quota.plan.name} alcanzado; no se importaron correos.`,
+      ],
+    };
+  }
+
   const settings = getImapSettings(config.provider);
   const imapConfig = {
     host: settings.host,
@@ -106,6 +120,7 @@ export async function fetchNewEmails(
       let msgIndex = 0;
 
       for (const uid of limitedMessages) {
+        if (remainingQuota <= 0) break;
         try {
           const fetchResult = await withTimeout(
             client.fetchOne(uid, { source: true }, { uid: true }),
@@ -149,6 +164,7 @@ export async function fetchNewEmails(
           );
 
           for (const attachment of invoiceAttachments) {
+            if (remainingQuota <= 0) break;
             try {
               const fileName = attachment.filename || `invoice-${nanoid()}.pdf`;
               const buffer = attachment.content;
@@ -242,6 +258,7 @@ export async function fetchNewEmails(
               }
 
               processed++;
+              remainingQuota--;
             } catch (attError: unknown) {
               const msg = attError instanceof Error ? attError.message : 'Error desconocido';
               errors.push(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenantContext, requireAdmin } from '@/lib/with-tenant';
 import { createSubscriptionPreference } from '@/lib/mercadopago';
 import { prisma } from '@/lib/prisma';
+import { DEFAULT_PLAN, PlanKey, isPlanKey } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,10 +17,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const body = await request.json().catch(() => ({}));
+    const plan: PlanKey = isPlanKey(body?.plan) ? body.plan : DEFAULT_PLAN;
+
     // Create MP preference
     const preference = await createSubscriptionPreference({
       organizationId: context.organization.id,
       email: context.user.email,
+      plan,
     });
 
     // Update subscription intent
@@ -28,12 +33,12 @@ export async function POST(request: NextRequest) {
         organizationId: context.organization.id,
       },
       update: {
-        plan: 'STARTER',
+        plan,
         status: 'TRIALING',
       },
       create: {
         organizationId: context.organization.id,
-        plan: 'STARTER',
+        plan,
         status: 'TRIALING',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

@@ -279,11 +279,16 @@ Nota: El horario está en UTC. `14:00 UTC` = `9:00 AM Colombia` (UTC-5)
 
 ## 💳 Suscripción
 
-| Plan | Precio/Mes | Características |
-|------|------------|-----------------|
-| **Plan Mensual** | $69.000 COP | Facturas ilimitadas, extracción con IA, backup en la nube, alertas de vencimiento |
+| Plan | Precio/Mes | Facturas | Correos sincronizados |
+|------|------------|----------|-----------------------|
+| **Básico** | $69.000 COP | 50 por mes | 1 (Gmail / Outlook) |
+| **Profesional** | $119.000 COP | 200 por mes | 2 (Gmail / Outlook) |
+| **Empresarial** | $265.000 COP | 500 por mes | 3 (Gmail / Outlook) |
+
+Todos los planes incluyen extracción con IA, backup en la nube (Google Drive / OneDrive), alertas de vencimiento y dashboard completo.
 
 - Trial de 30 días al registrarse
+- El límite de facturas se cuenta por período de facturación (se reinicia con cada pago) y aplica a facturas manuales y por correo
 - Pagos procesados por Mercado Pago
 - Webhooks para activación automática
 

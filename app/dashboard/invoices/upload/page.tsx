@@ -8,14 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { useOrganization } from '@/lib/organization-context';
-import { TRIAL_MAX_INVOICES } from '@/types';
 
 export default function UploadInvoicePage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<string>('');
   const router = useRouter();
-  const { subscription, invoiceCount } = useOrganization();
+  const { subscription, quota } = useOrganization();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -87,7 +86,9 @@ export default function UploadInvoicePage() {
         const notice =
           error.code === 'TRIAL_LIMIT_REACHED'
             ? 'trial_limit'
-            : 'subscription_required';
+            : error.code === 'PLAN_LIMIT_REACHED'
+              ? 'plan_limit'
+              : 'subscription_required';
         router.push(`/dashboard/settings/billing?notice=${notice}`);
       }
       setProgress('');
@@ -106,13 +107,26 @@ export default function UploadInvoicePage() {
         </p>
       </div>
 
-      {/* Trial usage banner */}
-      {subscription?.isTrial && (
-        <Card className="border-primary/20 bg-primary/5">
+      {/* Plan usage banner */}
+      {subscription?.isActive && quota && (
+        <Card className={quota.remaining <= 0 ? 'border-red-200 bg-red-50' : 'border-primary/20 bg-primary/5'}>
           <CardContent className="py-4">
-            <p className="text-sm text-muted-foreground">
-              Has usado <strong className="text-foreground">{invoiceCount} de {TRIAL_MAX_INVOICES}</strong> facturas de tu periodo de prueba.
-            </p>
+            {quota.remaining <= 0 ? (
+              <p className="text-sm text-red-700">
+                Has alcanzado el límite de <strong>{quota.limit} facturas</strong> de tu
+                plan en este período. Mejora tu plan o espera al siguiente período
+                para subir más.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Has usado{' '}
+                <strong className="text-foreground">
+                  {quota.used} de {quota.limit}
+                </strong>{' '}
+                facturas de tu plan{subscription.isTrial ? ' (prueba)' : ''} en este
+                período.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

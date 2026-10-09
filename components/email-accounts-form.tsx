@@ -6,7 +6,6 @@ import {
   Loader2,
   Trash2,
   Mail,
-  LogOut,
 } from 'lucide-react';
 
 interface EmailAccount {
@@ -32,7 +31,13 @@ const PROVIDER_META: Record<string, { label: string; color: string; iconColor: s
   },
 };
 
-export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
+export function EmailAccountsForm({
+  isAdmin,
+  maxAccounts,
+}: {
+  isAdmin: boolean;
+  maxAccounts: number;
+}) {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -56,40 +61,16 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  async function handleOAuthConnect(provider: string, isChange = false) {
-    if (isChange) {
-      const ok = await confirmImpact('cambiar');
-      if (!ok) return;
-    }
+  async function handleOAuthConnect(provider: string) {
     setConnecting(provider);
     setError('');
     window.location.href = `/api/auth/email/${provider}`;
   }
 
-  async function confirmImpact(action: 'cambiar' | 'eliminar'): Promise<boolean> {
-    let affectedInvoices = 0;
-    try {
-      const res = await fetch('/api/email-accounts/impact');
-      if (res.ok) {
-        const data = await res.json();
-        affectedInvoices = Number(data.affectedInvoices) || 0;
-      }
-    } catch {
-      /* fallback al confirm genérico */
-    }
-
-    if (affectedInvoices > 0) {
-      return confirm(
-        `Tienes ${affectedInvoices} factura(s) importada(s) desde este correo. Al ${action} la cuenta, ` +
-          `la vista previa y el archivo de esas facturas ya no estarán disponibles.\n\n¿Deseas continuar de todos modos?`
-      );
-    }
-
-    return confirm(`¿Estás seguro de ${action} esta cuenta de email?`);
-  }
-
   async function handleDelete(id: string) {
-    const ok = await confirmImpact('eliminar');
+    const ok = confirm(
+      '¿Estás seguro de eliminar esta cuenta de email? La vista previa y el archivo de las facturas importadas desde este correo ya no estarán disponibles.'
+    );
     if (!ok) return;
 
     setDeletingId(id);
@@ -116,8 +97,6 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  const hasOAuth = accounts.length > 0;
-
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -126,8 +105,17 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
     );
   }
 
+  const atLimit = accounts.length >= maxAccounts;
+
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">Correos sincronizados</span>
+        <span className="text-muted-foreground">
+          {accounts.length} de {maxAccounts}
+        </span>
+      </div>
+
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-400">
           {error}
@@ -139,7 +127,7 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {hasOAuth ? (
+      {accounts.length > 0 && (
         <div className="space-y-3">
           {accounts.map((account) => {
             const meta = PROVIDER_META[account.provider] || PROVIDER_META.GMAIL;
@@ -187,65 +175,66 @@ export function EmailAccountsForm({ isAdmin }: { isAdmin: boolean }) {
                       )}
                       Eliminar
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOAuthConnect(
-                        account.provider === 'GMAIL' ? 'outlook' : 'gmail',
-                        true
-                      )}
-                      disabled={connecting !== null}
-                    >
-                      <LogOut className="h-3 w-3 mr-1" />
-                      Cambiar a {account.provider === 'GMAIL' ? 'Outlook' : 'Gmail'}
-                    </Button>
                   </div>
                 )}
               </div>
             );
           })}
         </div>
-      ) : (
-        isAdmin && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              className="h-auto py-4 px-4 justify-start gap-3 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-              onClick={() => handleOAuthConnect('gmail')}
-              disabled={connecting !== null}
-            >
-              {connecting === 'gmail' ? (
-                <Loader2 className="h-5 w-5 animate-spin shrink-0" />
-              ) : (
-                <Mail className="h-5 w-5 text-red-600 shrink-0" />
-              )}
-              <div className="text-left">
-                <div className="font-medium">Conectar con Gmail</div>
-                <div className="text-xs text-muted-foreground">
-                  Cuentas de Google
-                </div>
+      )}
+
+      {isAdmin && !atLimit && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Button
+            variant="outline"
+            className="h-auto py-4 px-4 justify-start gap-3 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+            onClick={() => handleOAuthConnect('gmail')}
+            disabled={connecting !== null}
+          >
+            {connecting === 'gmail' ? (
+              <Loader2 className="h-5 w-5 animate-spin shrink-0" />
+            ) : (
+              <Mail className="h-5 w-5 text-red-600 shrink-0" />
+            )}
+            <div className="text-left">
+              <div className="font-medium">Conectar con Gmail</div>
+              <div className="text-xs text-muted-foreground">
+                Cuentas de Google
               </div>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-4 px-4 justify-start gap-3 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
-              onClick={() => handleOAuthConnect('outlook')}
-              disabled={connecting !== null}
-            >
-              {connecting === 'outlook' ? (
-                <Loader2 className="h-5 w-5 animate-spin shrink-0" />
-              ) : (
-                <Mail className="h-5 w-5 text-blue-600 shrink-0" />
-              )}
-              <div className="text-left">
-                <div className="font-medium">Conectar con Outlook</div>
-                <div className="text-xs text-muted-foreground">
-                  Outlook, Hotmail, Office 365
-                </div>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-auto py-4 px-4 justify-start gap-3 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
+            onClick={() => handleOAuthConnect('outlook')}
+            disabled={connecting !== null}
+          >
+            {connecting === 'outlook' ? (
+              <Loader2 className="h-5 w-5 animate-spin shrink-0" />
+            ) : (
+              <Mail className="h-5 w-5 text-blue-600 shrink-0" />
+            )}
+            <div className="text-left">
+              <div className="font-medium">Conectar con Outlook</div>
+              <div className="text-xs text-muted-foreground">
+                Outlook, Hotmail, Office 365
               </div>
-            </Button>
-          </div>
-        )
+            </div>
+          </Button>
+        </div>
+      )}
+
+      {isAdmin && atLimit && (
+        <p className="text-sm text-muted-foreground">
+          Alcanzaste el límite de {maxAccounts} correo(s) de tu plan. Elimina
+          una cuenta o mejora tu plan para conectar más.
+        </p>
+      )}
+
+      {!isAdmin && accounts.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Solo los administradores pueden conectar correos.
+        </p>
       )}
     </div>
   );

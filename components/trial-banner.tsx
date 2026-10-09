@@ -8,7 +8,7 @@ import { useOrganization } from '@/lib/organization-context';
 import { TRIAL_MAX_INVOICES } from '@/types';
 
 export function TrialBanner() {
-  const { subscription, invoiceCount } = useOrganization();
+  const { subscription, invoiceCount, quota } = useOrganization();
 
   if (!subscription?.isTrial || subscription.requiresRenewal) {
     return null;
@@ -19,8 +19,9 @@ export function TrialBanner() {
     : null;
   const daysLeft = end ? differenceInCalendarDays(end, new Date()) : null;
   const urgent = daysLeft !== null && daysLeft <= 3;
-  const used = Math.min(invoiceCount, TRIAL_MAX_INVOICES);
-  const progress = Math.round((used / TRIAL_MAX_INVOICES) * 100);
+  const limit = quota?.limit ?? TRIAL_MAX_INVOICES;
+  const used = Math.min(quota?.used ?? invoiceCount, limit);
+  const progress = Math.round((used / limit) * 100);
 
   return (
     <div
@@ -53,7 +54,7 @@ export function TrialBanner() {
                 ? `Termina el ${format(end, "d 'de' MMMM 'de' yyyy", { locale: es })}`
                 : 'Periodo de prueba activo'}
               {' · '}
-              {used} de {TRIAL_MAX_INVOICES} facturas usadas
+              {used} de {limit} facturas usadas
             </p>
           </div>
         </div>

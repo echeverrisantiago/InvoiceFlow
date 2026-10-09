@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getPayment } from '@/lib/mercadopago';
+import { isPlanKey } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,10 +34,13 @@ export async function POST(request: NextRequest) {
           const nextPeriodEnd = new Date(now);
           nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + 1);
 
+          const paidPlan = (payment.metadata as any)?.plan;
+
           await prisma.subscription.update({
             where: { organizationId },
             data: {
               status: 'ACTIVE',
+              ...(isPlanKey(paidPlan) ? { plan: paidPlan } : {}),
               mercadoPagoSubscriptionId: payment.id?.toString(),
               currentPeriodStart: now,
               currentPeriodEnd: nextPeriodEnd,

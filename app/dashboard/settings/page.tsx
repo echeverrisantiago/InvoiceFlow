@@ -7,6 +7,7 @@ import { CheckCircle2, Link as LinkIcon, LogOut, Cloud, Mail } from 'lucide-reac
 import { getAuthUrl } from '@/lib/drive';
 import { getOneDriveAuthUrl } from '@/lib/onedrive';
 import { EmailAccountsForm } from '@/components/email-accounts-form';
+import { getPlanDefinition } from '@/types';
 import Link from 'next/link';
 
 async function getSettings(organizationId: string) {
@@ -34,6 +35,10 @@ async function getSettings(organizationId: string) {
   return {
     organization,
     subscription,
+    plan: getPlanDefinition(subscription?.plan),
+    emailAccounts,
+    hasGmail: emailAccounts.some(a => a.provider === 'GMAIL'),
+    hasOutlook: emailAccounts.some(a => a.provider === 'OUTLOOK'),
     activeProvider: gmailAccount ? 'gmail' : outlookAccount ? 'outlook' : null,
     activeEmail: gmailAccount?.email || outlookAccount?.email || null,
   };
@@ -50,7 +55,7 @@ export default async function SettingsPage({
     redirect('/login');
   }
 
-  const { organization, subscription, activeProvider, activeEmail } = await getSettings(
+  const { organization, subscription, plan, hasGmail, hasOutlook, activeProvider } = await getSettings(
     context.organization.id
   );
   const driveAuthUrl = getAuthUrl();
@@ -122,6 +127,13 @@ export default async function SettingsPage({
           Error al desconectar el correo: {sp.message || 'Error desconocido'}
         </div>
       )}
+      {sp.error === 'email_limit_reached' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Alcanzaste el límite de correos de tu plan
+          {sp.limit ? ` (${sp.limit})` : ''}. Elimina una cuenta o mejora tu
+          plan para conectar más.
+        </div>
+      )}
 
       {/* Header */}
       <div>
@@ -159,130 +171,123 @@ export default async function SettingsPage({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            {activeProvider === 'gmail' && <Mail className="h-5 w-5 text-red-600" />}
-            {activeProvider === 'outlook' && <Mail className="h-5 w-5 text-blue-600" />}
-            {!activeProvider && <Cloud className="h-5 w-5 text-muted-foreground" />}
+            {hasGmail && <Mail className="h-5 w-5 text-red-600" />}
+            {!hasGmail && hasOutlook && <Mail className="h-5 w-5 text-blue-600" />}
+            {!hasGmail && !hasOutlook && <Cloud className="h-5 w-5 text-muted-foreground" />}
             <div>
-              <CardTitle>
-                {activeProvider === 'gmail' && 'Google (Gmail + Drive)'}
-                {activeProvider === 'outlook' && 'Microsoft (Outlook + OneDrive)'}
-                {!activeProvider && 'Conectar proveedor'}
-              </CardTitle>
+              <CardTitle>Correos y almacenamiento</CardTitle>
               <CardDescription>
                 {activeProvider
-                  ? `Conectado como ${activeEmail}`
-                  : 'Elige un proveedor para recibir facturas y guardarlas automáticamente'}
+                  ? `Sincroniza hasta ${plan.maxEmailAccounts} correo(s) e importa tus facturas automáticamente`
+                  : 'Conecta un proveedor para recibir facturas y guardarlas automáticamente'}
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {activeProvider ? (
-            <>
-              {/* Connected provider info + actions (client) */}
-              <div className="rounded-lg border p-4">
-                <EmailAccountsForm isAdmin={isAdmin(context)} />
+          {/* Connected accounts + actions (client) */}
+          <div className="rounded-lg border p-4">
+            <EmailAccountsForm
+              isAdmin={isAdmin(context)}
+              maxAccounts={plan.maxEmailAccounts}
+            />
+          </div>
+
+          {/* Storage section */}
+          {hasGmail && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Cloud className="h-5 w-5 text-green-600" />
+                <p className="font-medium">Google Drive</p>
               </div>
-
-              {/* Storage section */}
-              {activeProvider === 'gmail' && (
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="h-5 w-5 text-green-600" />
-                    <p className="font-medium">Google Drive</p>
-                  </div>
-                  {organization?.driveRefreshToken ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        <div>
-                          <p className="font-medium">Conectado</p>
-                          <p className="text-sm text-muted-foreground">
-                            Las facturas se guardarán automáticamente en tu Drive
-                          </p>
-                        </div>
-                      </div>
-                      {isAdmin(context) && (
-                        <form action="/api/auth/google-drive/disconnect" method="POST">
-                          <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Desconectar Google Drive
-                          </Button>
-                        </form>
-                      )}
-                    </div>
-                  ) : (
+              {organization?.driveRefreshToken ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
                     <div>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Conecta tu Google Drive para guardar las facturas automáticamente
+                      <p className="font-medium">Conectado</p>
+                      <p className="text-sm text-muted-foreground">
+                        Las facturas se guardarán automáticamente en tu Drive
                       </p>
-                      {isAdmin(context) ? (
-                        <Button asChild>
-                          <a href={driveAuthUrl}>
-                            <LinkIcon className="mr-2 h-4 w-4" />
-                            Conectar Google Drive
-                          </a>
-                        </Button>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Solo los administradores pueden conectar el almacenamiento
-                        </p>
-                      )}
                     </div>
+                  </div>
+                  {isAdmin(context) && (
+                    <form action="/api/auth/google-drive/disconnect" method="POST">
+                      <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Desconectar Google Drive
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Conecta tu Google Drive para guardar las facturas automáticamente
+                  </p>
+                  {isAdmin(context) ? (
+                    <Button asChild>
+                      <a href={driveAuthUrl}>
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Conectar Google Drive
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Solo los administradores pueden conectar el almacenamiento
+                    </p>
                   )}
                 </div>
               )}
+            </div>
+          )}
 
-              {activeProvider === 'outlook' && (
-                <div className="rounded-lg border p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="h-5 w-5 text-blue-600" />
-                    <p className="font-medium">OneDrive</p>
-                  </div>
-                  {organization?.onedriveRefreshToken ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        <div>
-                          <p className="font-medium">Conectado</p>
-                          <p className="text-sm text-muted-foreground">
-                            Las facturas se guardarán automáticamente en tu OneDrive
-                          </p>
-                        </div>
-                      </div>
-                      {isAdmin(context) && (
-                        <form action="/api/auth/onedrive/disconnect" method="POST">
-                          <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Desconectar OneDrive
-                          </Button>
-                        </form>
-                      )}
-                    </div>
-                  ) : (
+          {hasOutlook && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Cloud className="h-5 w-5 text-blue-600" />
+                <p className="font-medium">OneDrive</p>
+              </div>
+              {organization?.onedriveRefreshToken ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
                     <div>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Conecta tu OneDrive para guardar las facturas automáticamente
+                      <p className="font-medium">Conectado</p>
+                      <p className="text-sm text-muted-foreground">
+                        Las facturas se guardarán automáticamente en tu OneDrive
                       </p>
-                      {isAdmin(context) ? (
-                        <Button asChild>
-                          <a href={oneDriveAuthUrl}>
-                            <LinkIcon className="mr-2 h-4 w-4" />
-                            Conectar OneDrive
-                          </a>
-                        </Button>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Solo los administradores pueden conectar el almacenamiento
-                        </p>
-                      )}
                     </div>
+                  </div>
+                  {isAdmin(context) && (
+                    <form action="/api/auth/onedrive/disconnect" method="POST">
+                      <Button type="submit" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Desconectar OneDrive
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Conecta tu OneDrive para guardar las facturas automáticamente
+                  </p>
+                  {isAdmin(context) ? (
+                    <Button asChild>
+                      <a href={oneDriveAuthUrl}>
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Conectar OneDrive
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Solo los administradores pueden conectar el almacenamiento
+                    </p>
                   )}
                 </div>
               )}
-            </>
-          ) : (
-            <EmailAccountsForm isAdmin={isAdmin(context)} />
+            </div>
           )}
         </CardContent>
       </Card>
@@ -303,7 +308,7 @@ export default async function SettingsPage({
                   Plan Actual
                 </p>
                 <p className="text-2xl font-bold">
-                  Plan Mensual
+                  Plan {plan.name}
                 </p>
               </div>
               <div>
