@@ -6,6 +6,7 @@ import { cache } from 'react';
 export interface TenantSubscription {
   status: string;
   plan: string;
+  interval: string;
   currentPeriodEnd: Date | null;
   isActive: boolean;
   isTrial: boolean;
@@ -76,9 +77,11 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
 
   const now = new Date();
   const isTrial = subscription?.status === 'TRIALING';
-  const expired =
-    !!subscription?.currentPeriodEnd && subscription.currentPeriodEnd < now;
-  const isActive = subscription?.status === 'ACTIVE' || (isTrial && !expired);
+  const periodValid =
+    !!subscription?.currentPeriodEnd && subscription.currentPeriodEnd > now;
+  const isActive =
+    subscription?.status === 'ACTIVE' ||
+    ((isTrial || subscription?.status === 'CANCELED') && periodValid);
 
   return {
     user: {
@@ -95,6 +98,7 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
     subscription: {
       status: subscription?.status ?? 'NONE',
       plan: subscription?.plan ?? 'STARTER',
+      interval: subscription?.interval ?? 'MONTHLY',
       currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
       isActive,
       isTrial,

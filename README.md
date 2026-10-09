@@ -279,18 +279,23 @@ Nota: El horario está en UTC. `14:00 UTC` = `9:00 AM Colombia` (UTC-5)
 
 ## 💳 Suscripción
 
-| Plan | Precio/Mes | Facturas | Correos sincronizados |
-|------|------------|----------|-----------------------|
-| **Básico** | $69.000 COP | 50 por mes | 1 (Gmail / Outlook) |
-| **Profesional** | $119.000 COP | 200 por mes | 2 (Gmail / Outlook) |
-| **Empresarial** | $265.000 COP | 500 por mes | 3 (Gmail / Outlook) |
+| Plan | Precio/Mes | Precio/Año | Facturas | Correos sincronizados |
+|------|------------|------------|----------|-----------------------|
+| **Básico** | $69.000 COP | $690.000 COP | 50 por mes | 1 (Gmail / Outlook) |
+| **Profesional** | $119.000 COP | $1.190.000 COP | 200 por mes | 2 (Gmail / Outlook) |
+| **Empresarial** | $265.000 COP | $2.650.000 COP | 500 por mes | 3 (Gmail / Outlook) |
 
 Todos los planes incluyen extracción con IA, backup en la nube (Google Drive / OneDrive), alertas de vencimiento y dashboard completo.
 
-- Trial de 30 días al registrarse
-- El límite de facturas se cuenta por período de facturación (se reinicia con cada pago) y aplica a facturas manuales y por correo
-- Pagos procesados por Mercado Pago
-- Webhooks para activación automática
+- **Plan anual**: pagas 10 meses y obtienes 12 (2 meses gratis).
+- Suscripciones recurrentes (débito automático) procesadas por Mercado Pago.
+- Trial de 30 días al registrarse.
+- El límite de facturas se cuenta por **mes calendario** (se reinicia el día 1) y aplica a facturas manuales y por correo.
+- El usuario puede cambiar de plan/periodicidad o cancelar en cualquier momento; al cancelar conserva el acceso hasta el final del período pagado.
+
+### Webhooks de Mercado Pago
+
+En "Tus integraciones → Webhooks" activa los topics `subscription_preapproval` y `subscription_authorized_payment`, apunta la URL a `https://<tu-dominio>/api/subscriptions/webhook` y copia el **secret** en `MERCADOPAGO_WEBHOOK_SECRET`.
 
 ## 🚀 Deployment en Vercel
 

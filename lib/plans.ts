@@ -1,11 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { PlanDefinition, getPlanDefinition } from '@/types';
 
-interface SubscriptionPeriod {
-  currentPeriodStart: Date | null;
-  currentPeriodEnd: Date | null;
-}
-
 export interface InvoiceQuota {
   plan: PlanDefinition;
   limit: number;
@@ -16,30 +11,21 @@ export interface InvoiceQuota {
 }
 
 /**
- * Resolves the billing period used to count monthly invoice usage.
- * Falls back to the start of the current calendar month when there is no
- * subscription period available.
+ * Invoice usage is counted per calendar month (1st to last day) so that the
+ * "X facturas por mes" limit applies equally to monthly and yearly plans.
  */
-export function resolvePeriod(subscription: SubscriptionPeriod | null): {
-  start: Date;
-  end: Date | null;
-} {
-  if (subscription?.currentPeriodStart) {
-    return {
-      start: subscription.currentPeriodStart,
-      end: subscription.currentPeriodEnd ?? null,
-    };
-  }
-
-  const start = new Date();
-  start.setDate(1);
+export function resolvePeriod(): { start: Date; end: Date } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
   start.setHours(0, 0, 0, 0);
-  return { start, end: null };
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
 }
 
 /**
  * Computes the invoice quota for an organization based on its current
- * subscription plan and billing period.
+ * subscription plan and the current calendar month.
  */
 export async function getInvoiceQuota(
   organizationId: string
@@ -49,12 +35,12 @@ export async function getInvoiceQuota(
   });
 
   const plan = getPlanDefinition(subscription?.plan);
-  const { start, end } = resolvePeriod(subscription);
+  const { start, end } = resolvePeriod();
 
   const used = await prisma.invoice.count({
     where: {
       organizationId,
-      createdAt: { gte: start, ...(end ? { lte: end } : {}) },
+      createdAt: { gte: start, lte: end },
     },
   });
 

@@ -309,6 +309,10 @@ export default async function SettingsPage({
                 </p>
                 <p className="text-2xl font-bold">
                   Plan {plan.name}
+                  <span className="text-base font-medium text-muted-foreground">
+                    {' '}
+                    · {subscription.interval === 'YEARLY' ? 'Anual' : 'Mensual'}
+                  </span>
                 </p>
               </div>
               <div>

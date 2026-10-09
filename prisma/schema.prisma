@@ -21,6 +21,11 @@ enum SubscriptionPlan {
   BUSINESS
 }
 
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
 enum SubscriptionStatus {
   ACTIVE
   CANCELED
@@ -204,6 +209,7 @@ model Subscription {
   id        String             @id @default(cuid())
   plan      SubscriptionPlan   @default(STARTER)
   status    SubscriptionStatus @default(TRIALING)
+  interval  BillingInterval    @default(MONTHLY)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 

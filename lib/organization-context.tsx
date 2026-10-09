@@ -12,6 +12,7 @@ interface Organization {
 export interface SubscriptionInfo {
   status: string;
   plan: string;
+  interval: string;
   currentPeriodEnd: string | null;
   isActive: boolean;
   isTrial: boolean;

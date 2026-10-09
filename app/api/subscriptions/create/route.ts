@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantContext, requireAdmin } from '@/lib/with-tenant';
-import { createSubscriptionPreference } from '@/lib/mercadopago';
+import { cancelPreapproval, createPreapproval } from '@/lib/mercadopago';
 import { prisma } from '@/lib/prisma';
-import { DEFAULT_PLAN, PlanKey, isPlanKey } from '@/types';
+import {
+  DEFAULT_INTERVAL,
+  DEFAULT_PLAN,
+  BillingInterval,
+  PlanKey,
+  isBillingInterval,
+  isPlanKey,
+} from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,27 +26,56 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const plan: PlanKey = isPlanKey(body?.plan) ? body.plan : DEFAULT_PLAN;
+    const interval: BillingInterval = isBillingInterval(body?.interval)
+      ? body.interval
+      : DEFAULT_INTERVAL;
 
-    // Create MP preference
-    const preference = await createSubscriptionPreference({
-      organizationId: context.organization.id,
-      email: context.user.email,
-      plan,
+    const organizationId = context.organization.id;
+
+    const existing = await prisma.subscription.findUnique({
+      where: { organizationId },
     });
 
-    // Update subscription intent
+    // Cancel & recreate: stop the current recurring charge before creating a new one.
+    if (
+      existing?.mercadoPagoSubscriptionId &&
+      existing.status !== 'CANCELED' &&
+      existing.status !== 'TRIALING'
+    ) {
+      try {
+        await cancelPreapproval(existing.mercadoPagoSubscriptionId);
+      } catch (error) {
+        console.error('Could not cancel previous preapproval:', error);
+      }
+    }
+
+    // Create the recurring subscription (pending until the buyer authorizes it).
+    const preapproval = await createPreapproval({
+      organizationId,
+      email: context.user.email,
+      plan,
+      interval,
+    });
+
+    const isTrialing = !existing || existing.status === 'TRIALING';
+
     await prisma.subscription.upsert({
-      where: {
-        organizationId: context.organization.id,
-      },
+      where: { organizationId },
       update: {
         plan,
-        status: 'TRIALING',
+        interval,
+        mercadoPagoSubscriptionId: preapproval.id ?? null,
+        mercadoPagoCustomerId: preapproval.payer_id
+          ? String(preapproval.payer_id)
+          : undefined,
+        ...(isTrialing ? { status: 'TRIALING' as const } : {}),
       },
       create: {
-        organizationId: context.organization.id,
+        organizationId,
         plan,
+        interval,
         status: 'TRIALING',
+        mercadoPagoSubscriptionId: preapproval.id ?? null,
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
@@ -47,8 +83,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      preferenceId: preference.id,
-      initPoint: preference.init_point,
+      preapprovalId: preapproval.id,
+      initPoint: preapproval.init_point,
     });
   } catch (error: any) {
     console.error('Create subscription error:', error);
