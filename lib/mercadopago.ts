@@ -34,7 +34,7 @@ export interface CreatePreapprovalParams {
  */
 export async function createPreapproval({
   organizationId,
-  email,
+  //email,
   plan,
   interval,
 }: CreatePreapprovalParams) {
@@ -49,7 +49,6 @@ export async function createPreapproval({
       reason: `Plan ${planDef.name} (${intervalLabel}) - EntraFactura`,
       external_reference: organizationId,
       //payer_email: email,
-      payer_email: "TESTUSER9179256862855185971@testuser.com",
       back_url: `${appUrl}/dashboard/settings/billing`,
       status: 'pending',
       auto_recurring: {
