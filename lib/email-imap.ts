@@ -104,7 +104,10 @@ export async function fetchNewEmails(
       if (config.lastEmailUid) {
         searchOptions = { uid: `${Number(config.lastEmailUid) + 1}:*` };
       } else {
-        searchOptions = { since: config.createdAt };
+        // -1 día: evita excluir correos por el desfase UTC vs. hora local del buzón
+        searchOptions = {
+          since: new Date(config.createdAt.getTime() - 24 * 60 * 60 * 1000),
+        };
       }
 
       const searchResult = await withTimeout(
@@ -142,17 +145,20 @@ export async function fetchNewEmails(
           const parsed: any = await withTimeout(simpleParser(message.source as any), 30_000, 'simpleParser');
 
           if (config.createdAt && parsed.date) {
-            const emailDate = new Date(parsed.date).toISOString().slice(0, 10);
-            const accountDate = config.createdAt.toISOString().slice(0, 10);
+            const emailDate = new Date(parsed.date);
+            // -1 día: tolera el desfase UTC vs. hora local del buzón en la creación
+            const cutoff = new Date(
+              config.createdAt.getTime() - 24 * 60 * 60 * 1000
+            );
             const isLastEmail = msgIndex === limitedMessages.length - 1;
             if (isLastEmail) {
               console.log(
-                `[DEBUG] Ultimo correo - emailDate: "${emailDate}", ` +
-                `accountDate: "${accountDate}", raw: "${parsed.date}", ` +
-                `filtrado: ${emailDate < accountDate}`
+                `[DEBUG] Ultimo correo - emailDate: "${emailDate.toISOString()}", ` +
+                `cutoff: "${cutoff.toISOString()}", raw: "${parsed.date}", ` +
+                `filtrado: ${emailDate < cutoff}`
               );
             }
-            if (emailDate < accountDate) {
+            if (emailDate < cutoff) {
               continue;
             }
           }
