@@ -23,6 +23,7 @@ export interface TenantContext {
   organization: {
     id: string;
     name: string;
+    nit: string | null;
     role: 'ADMIN' | 'MEMBER';
   };
   subscription: TenantSubscription;
@@ -93,6 +94,7 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
     organization: {
       id: membership.organization.id,
       name: membership.organization.name,
+      nit: membership.organization.nit,
       role: membership.role,
     },
     subscription: {

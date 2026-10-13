@@ -12,8 +12,10 @@ import {
   getImapSettings,
   getAccessTokenForOAuth,
   isInvoiceAttachment,
+  inferMimeType,
 } from '@/lib/email-file';
 import { getInvoiceQuota } from '@/lib/plans';
+import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
 
 const MAX_EMAILS_PER_RUN = 50;
 
@@ -53,14 +55,21 @@ export async function testImapConnection(config: {
 
 export async function fetchNewEmails(
   config: EmailAccountConfig
-): Promise<{ success: boolean; processed: number; errors: string[] }> {
+): Promise<{ success: boolean; processed: number; skipped: number; errors: string[] }> {
   const errors: string[] = [];
   let processed = 0;
+  let skipped = 0;
 
   const accessToken = await getAccessTokenForOAuth(config);
   if (!accessToken) {
-    return { success: false, processed: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
+    return { success: false, processed: 0, skipped: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
   }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: config.organizationId },
+    select: { nit: true },
+  });
+  const organizationNit = organization?.nit ?? null;
 
   const quota = await getInvoiceQuota(config.organizationId);
   let remainingQuota = quota.remaining;
@@ -68,6 +77,7 @@ export async function fetchNewEmails(
     return {
       success: true,
       processed: 0,
+      skipped: 0,
       errors: [
         `Límite de ${quota.limit} facturas/mes del plan ${quota.plan.name} alcanzado; no se importaron correos.`,
       ],
@@ -174,13 +184,25 @@ export async function fetchNewEmails(
             try {
               const fileName = attachment.filename || `invoice-${nanoid()}.pdf`;
               const buffer = attachment.content;
-              const mimeType =
-                attachment.contentType ||
-                (fileName.endsWith('.pdf')
-                  ? 'application/pdf'
-                  : fileName.endsWith('.png')
-                    ? 'image/png'
-                    : 'image/jpeg');
+              const mimeType = attachment.contentType || inferMimeType(fileName);
+
+              const { extractInvoiceData } = await import('@/lib/ia');
+              const extraction = await withTimeout(
+                extractInvoiceData(buffer, mimeType, fileName),
+                120_000,
+                'extractInvoiceData'
+              );
+
+              // Skip invoices the organization emitted itself (only for DIAN XML).
+              if (
+                extraction.success &&
+                extraction.data &&
+                extraction.source === 'XML' &&
+                isInvoiceIssuedByOrganization(extraction.data, organizationNit)
+              ) {
+                skipped++;
+                continue;
+              }
 
               const invoiceId = nanoid();
               let invoice;
@@ -209,13 +231,6 @@ export async function fetchNewEmails(
                 }
                 throw createError;
               }
-
-              const { extractInvoiceData } = await import('@/lib/ia');
-              const extraction = await withTimeout(
-                extractInvoiceData(buffer, mimeType),
-                120_000,
-                'extractInvoiceData'
-              );
 
               if (extraction.success && extraction.data) {
                 await prisma.invoice.update({
@@ -310,8 +325,8 @@ export async function fetchNewEmails(
 
     await withTimeout(client.logout(), 10_000, 'logout IMAP');
 
-    console.log(`[fetchNewEmails] Completado para ${config.email}: ${processed} procesados, ${errors.length} errores`);
-    return { success: true, processed, errors };
+    console.log(`[fetchNewEmails] Completado para ${config.email}: ${processed} procesados, ${skipped} omitidos, ${errors.length} errores`);
+    return { success: true, processed, skipped, errors };
   } catch (error: unknown) {
     await client.logout().catch(() => {});
     const msg = error instanceof Error ? error.message : 'Error en conexión IMAP';
@@ -319,6 +334,7 @@ export async function fetchNewEmails(
     return {
       success: false,
       processed,
+      skipped,
       errors: [msg],
     };
   }

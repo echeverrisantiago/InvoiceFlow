@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +15,7 @@ export default function UploadInvoicePage() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<string>('');
   const router = useRouter();
-  const { subscription, quota } = useOrganization();
+  const { organization, subscription, quota } = useOrganization();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -28,6 +29,10 @@ export default function UploadInvoicePage() {
       'application/pdf': ['.pdf'],
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg'],
+      'application/zip': ['.zip'],
+      'application/x-zip-compressed': ['.zip'],
+      'application/xml': ['.xml'],
+      'text/xml': ['.xml'],
     },
     maxFiles: 1,
     maxSize: 10 * 1024 * 1024, // 10MB
@@ -59,16 +64,30 @@ export default function UploadInvoicePage() {
       }
 
       const { invoiceId } = await uploadResponse.json();
-      setProgress('Extrayendo datos con IA...');
+      setProgress('Extrayendo datos...');
 
       // Trigger extraction
       const extractResponse = await fetch(`/api/invoices/${invoiceId}/extract`, {
         method: 'POST',
       });
 
+      const extractData = await extractResponse.json().catch(() => ({}));
+
       if (!extractResponse.ok) {
-        const errorData = await extractResponse.json();
-        throw new Error(errorData.error || 'Error al extraer datos');
+        throw new Error(extractData.error || 'Error al extraer datos');
+      }
+
+      if (extractData.skipped) {
+        setProgress('');
+        toast.info(
+          extractData.message ||
+            'Esta factura fue emitida por tu empresa, por lo que no se registró.'
+        );
+        setTimeout(() => {
+          router.push('/dashboard/invoices');
+          router.refresh();
+        }, 1200);
+        return;
       }
 
       setProgress('¡Completado!');
@@ -103,9 +122,25 @@ export default function UploadInvoicePage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Subir Factura</h1>
         <p className="text-muted-foreground">
-          Sube un PDF o imagen de tu factura para extraer los datos automáticamente
+          Sube un PDF, imagen, ZIP o XML de tu factura para extraer los datos automáticamente
         </p>
       </div>
+
+      {/* NIT missing banner */}
+      {organization && !organization.nit && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="py-4">
+            <p className="text-sm text-amber-800">
+              Tu empresa aún no tiene NIT configurado. Configúralo en{' '}
+              <Link href="/dashboard/settings" className="font-medium underline">
+                Configuración
+              </Link>{' '}
+              para no registrar como cuenta por pagar las facturas electrónicas que tú
+              emites.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Plan usage banner */}
       {subscription?.isActive && quota && (
@@ -136,7 +171,7 @@ export default function UploadInvoicePage() {
         <CardHeader>
           <CardTitle>Selecciona un archivo</CardTitle>
           <CardDescription>
-            Formatos aceptados: PDF, PNG, JPG. Tamaño máximo: 10MB
+            Formatos aceptados: PDF, PNG, JPG, ZIP y XML (factura electrónica). Tamaño máximo: 10MB
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -238,7 +273,7 @@ export default function UploadInvoicePage() {
               1
             </div>
             <p>
-              <strong>Sube tu factura:</strong> PDF o imagen de tu factura
+              <strong>Sube tu factura:</strong> PDF, imagen, ZIP o XML de tu factura
             </p>
           </div>
           <div className="flex gap-3">
@@ -246,7 +281,7 @@ export default function UploadInvoicePage() {
               2
             </div>
             <p>
-              <strong>IA extrae los datos:</strong> Proveedor, NIT, fechas, montos automáticamente
+              <strong>Se extraen los datos:</strong> del XML si es factura electrónica, o con IA para PDF e imágenes
             </p>
           </div>
           <div className="flex gap-3">

@@ -5,6 +5,8 @@ import { extractInvoiceData } from '@/lib/ia';
 import { uploadToDrive } from '@/lib/drive';
 import { Prisma } from '@prisma/client';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
+import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
+import { createClient } from '@/lib/supabase/server';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -14,6 +16,51 @@ function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   parsedDueDate.setHours(0, 0, 0, 0);
 
   return parsedDueDate < today ? 'OVERDUE' : 'PENDING';
+}
+
+/**
+ * Extracts the Supabase Storage object path from a public URL
+ * (e.g. https://x.supabase.co/storage/v1/object/public/invoices/org/file.zip).
+ */
+function getStoragePathFromUrl(fileUrl: string): string | null {
+  const marker = '/object/public/invoices/';
+  const index = fileUrl.indexOf(marker);
+  if (index === -1) return null;
+  const path = fileUrl.slice(index + marker.length).split('?')[0];
+  if (!path) return null;
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * Removes an invoice that should not be registered, along with its uploaded
+ * file in Supabase Storage (manual uploads) to avoid orphaned objects.
+ */
+async function discardInvoice(invoice: {
+  id: string;
+  fileUrl: string;
+  source: string;
+}): Promise<void> {
+  if (invoice.source !== 'EMAIL') {
+    const storagePath = getStoragePathFromUrl(invoice.fileUrl);
+    if (storagePath) {
+      try {
+        const supabase = await createClient();
+        await supabase.storage.from('invoices').remove([storagePath]);
+      } catch (error) {
+        console.error('Error eliminando archivo de Supabase Storage:', error);
+      }
+    }
+  }
+
+  try {
+    await prisma.invoice.delete({ where: { id: invoice.id } });
+  } catch (error) {
+    console.error('Error eliminando factura omitida:', error);
+  }
 }
 
 export async function POST(
@@ -71,10 +118,10 @@ export async function POST(
       });
     }
 
-    // Extract data with AI
+    // Extract data (electronic invoice XML when available, otherwise AI)
     const extraction = emailFile
-      ? await extractInvoiceData(emailFile.buffer, emailFile.mimeType)
-      : await extractInvoiceData(invoice.fileUrl);
+      ? await extractInvoiceData(emailFile.buffer, emailFile.mimeType, emailFile.fileName)
+      : await extractInvoiceData(invoice.fileUrl, undefined, invoice.fileName);
 
     if (!extraction.success || !extraction.data) {
       // Update status to failed
@@ -90,6 +137,26 @@ export async function POST(
         { error: extraction.error || 'Error al extraer datos' },
         { status: 500 }
       );
+    }
+
+    // Discard invoices the organization emitted itself (only for DIAN XML).
+    if (
+      extraction.source === 'XML' &&
+      isInvoiceIssuedByOrganization(extraction.data, context.organization.nit)
+    ) {
+      await discardInvoice({
+        id: invoice.id,
+        fileUrl: invoice.fileUrl,
+        source: invoice.source,
+      });
+
+      return NextResponse.json({
+        success: false,
+        skipped: true,
+        reason: 'ISSUED_BY_ORGANIZATION',
+        message:
+          'Esta factura fue emitida por tu empresa, por lo que no se registró como cuenta por pagar.',
+      });
     }
 
     // Update invoice with extracted data

@@ -81,7 +81,7 @@ Si NO hay cookies, continúa a la depuración.
 Si todo funciona:
 
 1. ✅ **Dashboard**: Ve los KPIs (estarán en 0)
-2. ✅ **Subir Factura**: `/dashboard/invoices/upload` - prueba subir un PDF o imagen
+2. ✅ **Subir Factura**: `/dashboard/invoices/upload` - prueba subir un PDF, imagen, ZIP o XML (factura electrónica)
 3. ✅ **Google Drive**: `/dashboard/settings` - conecta tu cuenta (opcional)
 
 ---

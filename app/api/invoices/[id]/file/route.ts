@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
+import { getPreviewFile } from '@/lib/electronic-invoice';
+import { isZipFile } from '@/lib/file-types';
+
+interface PreviewFile {
+  buffer: Buffer;
+  mimeType: string;
+  fileName: string;
+}
+
+function fileResponse(file: PreviewFile): Response {
+  return new Response(new Uint8Array(file.buffer), {
+    headers: {
+      'Content-Type': file.mimeType,
+      'Content-Disposition': `inline; filename="${file.fileName}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
+}
 
 export async function GET(
   _request: NextRequest,
@@ -26,14 +44,30 @@ export async function GET(
     return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 });
   }
 
+  // Manual uploads are stored in Supabase Storage.
   if (invoice.source !== 'EMAIL' || !invoice.emailAccountId || !invoice.messageUid) {
-    if (invoice.fileUrl) {
-      return NextResponse.redirect(invoice.fileUrl, 307);
+    if (!invoice.fileUrl) {
+      return NextResponse.json(
+        { error: 'Vista previa no disponible para esta factura' },
+        { status: 404 }
+      );
     }
-    return NextResponse.json(
-      { error: 'Vista previa no disponible para esta factura' },
-      { status: 404 }
-    );
+
+    // Electronic invoices (ZIP): extract the embedded PDF for preview.
+    if (isZipFile(undefined, invoice.fileName)) {
+      try {
+        const response = await fetch(invoice.fileUrl);
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const mimeType = response.headers.get('content-type') || 'application/zip';
+          return fileResponse(getPreviewFile(buffer, mimeType, invoice.fileName));
+        }
+      } catch (error: unknown) {
+        console.error('Error obteniendo preview del ZIP:', error);
+      }
+    }
+
+    return NextResponse.redirect(invoice.fileUrl, 307);
   }
 
   try {
@@ -53,13 +87,7 @@ export async function GET(
       );
     }
 
-    return new Response(new Uint8Array(file.buffer), {
-      headers: {
-        'Content-Type': file.mimeType,
-        'Content-Disposition': `inline; filename="${file.fileName}"`,
-        'Cache-Control': 'private, no-store',
-      },
-    });
+    return fileResponse(getPreviewFile(file.buffer, file.mimeType, file.fileName));
   } catch (error: unknown) {
     console.error('Error obteniendo preview desde email:', error);
     const message = error instanceof Error ? error.message : 'Error desconocido';

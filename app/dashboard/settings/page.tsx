@@ -7,6 +7,7 @@ import { CheckCircle2, Link as LinkIcon, LogOut, Cloud, Mail } from 'lucide-reac
 import { getAuthUrl } from '@/lib/drive';
 import { getOneDriveAuthUrl } from '@/lib/onedrive';
 import { EmailAccountsForm } from '@/components/email-accounts-form';
+import { OrganizationNitForm } from '@/components/organization-nit-form';
 import { getPlanDefinition } from '@/types';
 import Link from 'next/link';
 
@@ -16,6 +17,7 @@ async function getSettings(organizationId: string) {
       where: { id: organizationId },
       select: {
         name: true,
+        nit: true,
         driveRefreshToken: true,
         onedriveRefreshToken: true,
       },
@@ -164,6 +166,28 @@ export default async function SettingsPage({
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* NIT (filtro de facturas emitidas) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Datos de facturación</CardTitle>
+          <CardDescription>
+            El NIT permite distinguir las facturas que recibes de las que emites.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!organization?.nit && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Configura el NIT de tu empresa para que las facturas electrónicas que
+              emites no se registren como cuentas por pagar.
+            </div>
+          )}
+          <OrganizationNitForm
+            initialNit={organization?.nit ?? null}
+            isAdmin={isAdmin(context)}
+          />
         </CardContent>
       </Card>
 

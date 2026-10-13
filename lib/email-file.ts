@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
+import { isXmlFileName, isZipFileName, looksLikeDianInvoiceXml } from '@/lib/file-types';
 
 export const IMAP_CONNECT_TIMEOUT = 30_000;
 export const IMAP_SOCKET_TIMEOUT = 60_000;
@@ -79,23 +80,43 @@ export async function getAccessTokenForOAuth(config: EmailAccountConfig): Promis
   return null;
 }
 
-export function isInvoiceAttachment(att: { contentType?: string; filename?: string }): boolean {
+export function isInvoiceAttachment(att: {
+  contentType?: string;
+  filename?: string;
+  content?: Buffer;
+}): boolean {
   const contentType = (att.contentType || '').toLowerCase();
   const filename = (att.filename || '').toLowerCase();
-  return (
+
+  const isPdfOrImage =
     contentType.includes('pdf') ||
     contentType.includes('png') ||
     contentType.includes('jpeg') ||
     filename.endsWith('.pdf') ||
     filename.endsWith('.png') ||
     filename.endsWith('.jpg') ||
-    filename.endsWith('.jpeg')
-  );
+    filename.endsWith('.jpeg');
+  if (isPdfOrImage) return true;
+
+  // ZIP containers of electronic invoices.
+  if (contentType.includes('zip') || isZipFileName(filename)) return true;
+
+  // Standalone XML: only accept it when it looks like a DIAN invoice.
+  const isXml = contentType.includes('xml') || isXmlFileName(filename);
+  if (!isXml) return false;
+
+  if (att.content) {
+    return looksLikeDianInvoiceXml(att.content.toString('utf8'));
+  }
+  return true;
 }
 
 export function inferMimeType(fileName: string): string {
-  if (fileName.toLowerCase().endsWith('.pdf')) return 'application/pdf';
-  if (fileName.toLowerCase().endsWith('.png')) return 'image/png';
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.zip')) return 'application/zip';
+  if (lower.endsWith('.xml')) return 'application/xml';
   return 'image/jpeg';
 }
 

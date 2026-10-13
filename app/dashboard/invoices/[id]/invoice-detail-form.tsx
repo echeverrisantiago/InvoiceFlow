@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { InvoiceLineItem } from '@/types';
 import { formatCurrency, formatDate, toDateInputValue } from '@/lib/utils';
+import { isZipFileName } from '@/lib/file-types';
 
 export type EditableInvoice = {
   id: string;
@@ -163,19 +164,26 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
   };
 
   const pdf = isPdf(invoice.fileName, invoice.fileUrl);
+  const isZip = isZipFileName(invoice.fileName);
+  const fileEndpoint = `/api/invoices/${invoice.id}/file`;
+  // ZIPs are previewed through the API, which serves the embedded PDF.
+  const displayUrl = isZip ? fileEndpoint : invoice.fileUrl;
+  const downloadName = isZip
+    ? invoice.fileName.replace(/\.zip$/i, '.pdf')
+    : invoice.fileName;
 
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewSrc, setPreviewSrc] = useState<string>(invoice.fileUrl);
+  const [previewSrc, setPreviewSrc] = useState<string>(isZip ? fileEndpoint : invoice.fileUrl);
   const [previewIsPdf, setPreviewIsPdf] = useState<boolean>(pdf);
 
   useEffect(() => {
-    if (invoice.source !== 'EMAIL') return;
+    if (invoice.source !== 'EMAIL' && !isZip) return;
 
     let objectUrl: string | null = null;
 
     (async () => {
       try {
-        const res = await fetch(invoice.fileUrl);
+        const res = await fetch(displayUrl);
         if (!res.ok) {
           let message = 'Vista previa no disponible.';
           try {
@@ -193,14 +201,14 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
         setPreviewSrc(objectUrl);
         setPreviewIsPdf(isPdf(invoice.fileName, '') || blob.type.includes('pdf'));
       } catch {
-        setPreviewError('Vista previa no disponible. Error al obtener el archivo desde el correo.');
+        setPreviewError('Vista previa no disponible. Error al obtener el archivo.');
       }
     })();
 
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [invoice.source, invoice.fileUrl, invoice.fileName]);
+  }, [invoice.source, invoice.fileName, isZip, displayUrl]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -386,12 +394,12 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
 
             <div className="flex gap-3">
               <Button asChild variant="outline">
-                <a href={invoice.fileUrl} target="_blank" rel="noreferrer">
+                <a href={displayUrl} target="_blank" rel="noreferrer">
                   Ver archivo completo
                 </a>
               </Button>
               <Button asChild>
-                <a href={invoice.fileUrl} download={invoice.fileName}>
+                <a href={displayUrl} download={downloadName}>
                   Descargar
                 </a>
               </Button>

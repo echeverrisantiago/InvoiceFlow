@@ -40,7 +40,7 @@ const STEPS: Step[] = [
     target: 'upload-invoice',
     title: 'Subir Facturas',
     description:
-      'Sube facturas en PDF o imagen. La inteligencia artificial extraerá automáticamente los datos clave sin que tengas que escribir nada.',
+      'Sube facturas en PDF, imagen, ZIP o XML (factura electrónica). Si viene el XML se extraen los datos directamente; en PDF e imágenes lo hace la inteligencia artificial.',
     position: 'bottom',
   },
   {

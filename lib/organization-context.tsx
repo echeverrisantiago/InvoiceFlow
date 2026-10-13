@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 interface Organization {
   id: string;
   name: string;
+  nit: string | null;
   role: 'ADMIN' | 'MEMBER';
 }
 

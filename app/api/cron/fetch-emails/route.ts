@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
           email: account.email,
           success: false,
           processed: 0,
+          skipped: 0,
           errors: ['Timeout global alcanzado'],
         });
         continue;
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
           email: account.email,
           success: result.success,
           processed: result.processed,
+          skipped: result.skipped,
           errors: result.errors,
         });
       } catch (error: unknown) {
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
           email: account.email,
           success: false,
           processed: 0,
+          skipped: 0,
           errors: [msg],
         });
       }
@@ -95,6 +98,7 @@ export async function GET(request: NextRequest) {
       }),
       accountsProcessed: results.length,
       totalInvoicesCreated: results.reduce((sum, r) => sum + r.processed, 0),
+      totalInvoicesSkipped: results.reduce((sum, r) => sum + r.skipped, 0),
       details: results,
     });
   } catch (error: unknown) {

@@ -1,6 +1,12 @@
 import { ChatGroq } from '@langchain/groq';
 import { HumanMessage } from '@langchain/core/messages';
 import type { ExtractionResult, InvoiceData } from '@/types';
+import {
+  isElectronicInvoiceFile,
+  isXmlFile,
+  isZipFile,
+  fileNameFromUrl,
+} from '@/lib/file-types';
 
 const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -47,13 +53,62 @@ IMPORTANTE:
 
 Responde SOLO con el JSON, sin texto adicional.`;
 
+interface ElectronicInvoiceOutcome {
+  data?: InvoiceData;
+  pdfBuffer?: Buffer;
+  xmlText?: string;
+  error?: string;
+}
+
+/**
+ * Tries to read a Colombian electronic invoice (DIAN UBL 2.1) from a ZIP or a
+ * standalone XML, without calling the AI. Returns the parsed data when possible
+ * and, for ZIPs, the embedded PDF so the AI can be used as a fallback.
+ */
+async function tryElectronicInvoice(
+  buffer: Buffer,
+  contentType: string,
+  fileName: string
+): Promise<ElectronicInvoiceOutcome> {
+  const { parseInvoiceFromZip, parseDianInvoiceXml } = await import(
+    '@/lib/electronic-invoice'
+  );
+
+  if (isZipFile(contentType, fileName)) {
+    const result = parseInvoiceFromZip(buffer);
+    if (result.data) {
+      return { data: result.data, pdfBuffer: result.pdf?.buffer };
+    }
+    if (result.pdf) {
+      return { pdfBuffer: result.pdf.buffer };
+    }
+    return {
+      error: 'El ZIP no contiene una factura electrónica XML válida ni un PDF.',
+    };
+  }
+
+  if (isXmlFile(contentType, fileName)) {
+    const xmlText = buffer.toString('utf8');
+    const data = parseDianInvoiceXml(xmlText);
+    if (data) {
+      return { data };
+    }
+    // Fall back to the text model using the raw XML.
+    return { xmlText };
+  }
+
+  return { error: 'Formato de factura electrónica no reconocido.' };
+}
+
 export async function extractInvoiceData(
   fileOrBuffer: string | Buffer,
-  contentTypeHint?: string
+  contentTypeHint?: string,
+  fileNameHint?: string
 ): Promise<ExtractionResult> {
   try {
     let buffer: Buffer;
     let contentType: string;
+    let fileName: string;
     let isPdf: boolean;
 
     if (typeof fileOrBuffer === 'string') {
@@ -67,13 +122,15 @@ export async function extractInvoiceData(
       }
 
       contentType = response.headers.get('content-type') || '';
+      fileName = fileNameHint || fileNameFromUrl(fileOrBuffer) || '';
       const arrayBuffer = await response.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
-      isPdf = contentType.includes('pdf') || fileOrBuffer.toLowerCase().includes('.pdf');
+      isPdf = contentType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
     } else {
       buffer = fileOrBuffer;
       contentType = contentTypeHint || '';
-      isPdf = contentType.includes('pdf');
+      fileName = fileNameHint || '';
+      isPdf = contentType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
     }
 
     // Detect if response is HTML (error page) instead of a real file
@@ -84,25 +141,59 @@ export async function extractInvoiceData(
       };
     }
 
-    let result;
+    // Electronic invoicing: read the DIAN XML instead of using the AI.
+    let preExtractedText: string | undefined;
+    if (isElectronicInvoiceFile(contentType, fileName)) {
+      const outcome = await tryElectronicInvoice(buffer, contentType, fileName);
 
-    if (isPdf) {
-      const { extractText } = await import('unpdf');
-
-      let pdfText: string;
-      try {
-        const { text } = await extractText(new Uint8Array(buffer));
-        pdfText = Array.isArray(text) ? text.join('\n').trim() : String(text).trim();
-      } catch (pdfError: any) {
-        return { success: false, error: `Error al leer PDF: ${pdfError.message}` };
+      if (outcome.data) {
+        return {
+          success: true,
+          data: outcome.data,
+          rawResponse: { source: 'XML', fileName: fileName || undefined },
+          source: 'XML',
+        };
       }
 
-      if (!pdfText) {
-        return { success: false, error: 'El PDF no contiene texto extraíble (puede ser una imagen escaneada)' };
+      if (outcome.pdfBuffer) {
+        // ZIP without a usable XML: fall back to the AI using the embedded PDF.
+        buffer = outcome.pdfBuffer;
+        contentType = 'application/pdf';
+        isPdf = true;
+      } else if (outcome.xmlText) {
+        // Standalone XML that could not be parsed: let the text model try.
+        preExtractedText = outcome.xmlText.slice(0, 8000);
+      } else {
+        return {
+          success: false,
+          error: outcome.error || 'No se pudieron extraer datos de la factura electrónica',
+        };
+      }
+    }
+
+    let result;
+
+    if (isPdf || preExtractedText) {
+      let pdfText: string;
+      if (preExtractedText) {
+        pdfText = preExtractedText;
+      } else {
+        const { extractText } = await import('unpdf');
+
+        try {
+          const { text } = await extractText(new Uint8Array(buffer));
+          pdfText = Array.isArray(text) ? text.join('\n').trim() : String(text).trim();
+        } catch (pdfError: any) {
+          return { success: false, error: `Error al leer PDF: ${pdfError.message}` };
+        }
+
+        if (!pdfText) {
+          return { success: false, error: 'El PDF no contiene texto extraíble (puede ser una imagen escaneada)' };
+        }
       }
 
       const message = new HumanMessage(
-        `${EXTRACTION_PROMPT}\n\nContenido del PDF:\n${pdfText.slice(0, 8000)}`
+        `${EXTRACTION_PROMPT}\n\nContenido del documento:\n${pdfText.slice(0, 8000)}`
       );
       result = await textModel.invoke([message]);
     } else {
@@ -165,6 +256,7 @@ export async function extractInvoiceData(
       success: true,
       data,
       rawResponse: data,
+      source: 'AI',
     };
   } catch (error: any) {
     console.error('AI extraction error:', error);

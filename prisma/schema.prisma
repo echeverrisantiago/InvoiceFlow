@@ -91,6 +91,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // NIT de la empresa (para distinguir facturas recibidas de emitidas)
+  nit String?
+
   // Google Drive integration
   driveRefreshToken String?  @db.Text
   driveTokenExpiry  DateTime?

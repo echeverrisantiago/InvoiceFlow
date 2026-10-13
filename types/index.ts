@@ -15,6 +15,9 @@ export interface InvoiceData {
   total: number;
   description: string;
   items: InvoiceLineItem[];
+  // Only populated for electronic invoices (DIAN XML).
+  customerName?: string;
+  customerNit?: string;
 }
 
 export interface ExtractionResult {
@@ -22,6 +25,8 @@ export interface ExtractionResult {
   data?: InvoiceData;
   error?: string;
   rawResponse?: any;
+  /** Where the data came from: DIAN XML parsing or the AI. */
+  source?: 'XML' | 'AI';
 }
 
 export type PlanKey = 'STARTER' | 'PRO' | 'BUSINESS';

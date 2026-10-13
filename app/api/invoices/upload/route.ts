@@ -4,6 +4,11 @@ import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { getInvoiceQuota } from '@/lib/plans';
+import {
+  ACCEPTED_UPLOAD_MIME_TYPES,
+  isXmlFileName,
+  isZipFileName,
+} from '@/lib/file-types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,9 +67,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg'];
-    if (!allowedTypes.includes(file.type)) {
+    // Validate file type (by MIME and, for ZIP/XML, by extension)
+    const mimeType = (file.type || '').toLowerCase();
+    const hasAllowedMime = ACCEPTED_UPLOAD_MIME_TYPES.includes(mimeType);
+    const hasAllowedExtension = isZipFileName(file.name) || isXmlFileName(file.name);
+
+    if (!hasAllowedMime && !hasAllowedExtension) {
       return NextResponse.json(
         { error: 'Tipo de archivo no permitido' },
         { status: 400 }
