@@ -1,9 +1,11 @@
 'use client';
 
+import { useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, X } from 'lucide-react';
+import { Search, X, Loader2 } from 'lucide-react';
+import { emitNavigating } from '@/lib/navigation-events';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
@@ -19,6 +21,7 @@ const STATUS_OPTIONS = [
 export function InvoiceFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const supplier = searchParams.get('supplier') ?? '';
   const dateFrom = searchParams.get('dateFrom') ?? '';
@@ -26,6 +29,13 @@ export function InvoiceFilters() {
   const amountMin = searchParams.get('amountMin') ?? '';
   const amountMax = searchParams.get('amountMax') ?? '';
   const status = searchParams.get('status') ?? '';
+
+  function navigate(url: string) {
+    emitNavigating(true);
+    startTransition(() => {
+      router.push(url);
+    });
+  }
 
   function applyFilters(formData: FormData) {
     const params = new URLSearchParams();
@@ -46,17 +56,22 @@ export function InvoiceFilters() {
     if (statusVal) params.set('status', statusVal);
 
     const qs = params.toString();
-    router.push(qs ? `/dashboard/invoices?${qs}` : '/dashboard/invoices');
+    navigate(qs ? `/dashboard/invoices?${qs}` : '/dashboard/invoices');
+  }
+
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    applyFilters(new FormData(event.currentTarget));
   }
 
   function clearFilters() {
-    router.push('/dashboard/invoices');
+    navigate('/dashboard/invoices');
   }
 
   const hasFilters = supplier || dateFrom || dateTo || amountMin || amountMax || status;
 
   return (
-    <form action={applyFilters} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <div>
           <label htmlFor="supplier" className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -67,6 +82,7 @@ export function InvoiceFilters() {
             name="supplier"
             placeholder="Buscar proveedor..."
             defaultValue={supplier}
+            disabled={isPending}
             className="h-9"
           />
         </div>
@@ -80,6 +96,7 @@ export function InvoiceFilters() {
             name="dateFrom"
             type="date"
             defaultValue={dateFrom}
+            disabled={isPending}
             className="h-9"
           />
         </div>
@@ -93,6 +110,7 @@ export function InvoiceFilters() {
             name="dateTo"
             type="date"
             defaultValue={dateTo}
+            disabled={isPending}
             className="h-9"
           />
         </div>
@@ -107,6 +125,7 @@ export function InvoiceFilters() {
             type="number"
             placeholder="0"
             defaultValue={amountMin}
+            disabled={isPending}
             className="h-9"
           />
         </div>
@@ -121,6 +140,7 @@ export function InvoiceFilters() {
             type="number"
             placeholder="0"
             defaultValue={amountMax}
+            disabled={isPending}
             className="h-9"
           />
         </div>
@@ -133,7 +153,8 @@ export function InvoiceFilters() {
             id="status"
             name="status"
             defaultValue={status}
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            disabled={isPending}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           >
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -145,12 +166,22 @@ export function InvoiceFilters() {
       </div>
 
       <div className="flex gap-2">
-        <Button type="submit" size="sm">
-          <Search className="mr-2 h-4 w-4" />
-          Aplicar Filtros
+        <Button type="submit" size="sm" disabled={isPending}>
+          {isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Search className="mr-2 h-4 w-4" />
+          )}
+          {isPending ? 'Aplicando...' : 'Aplicar Filtros'}
         </Button>
         {hasFilters && (
-          <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+            disabled={isPending}
+          >
             <X className="mr-2 h-4 w-4" />
             Limpiar
           </Button>

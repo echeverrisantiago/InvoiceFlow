@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { InvoiceLineItem } from '@/types';
@@ -222,14 +223,19 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     ? invoice.fileName.replace(/\.zip$/i, '.pdf')
     : invoice.fileName;
 
+  const needsFetch = invoice.source === 'EMAIL' || isZip;
+
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string>(isZip ? fileEndpoint : invoice.fileUrl);
   const [previewIsPdf, setPreviewIsPdf] = useState<boolean>(pdf);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(needsFetch);
 
   useEffect(() => {
     if (invoice.source !== 'EMAIL' && !isZip) return;
 
     let objectUrl: string | null = null;
+    setPreviewLoading(true);
+    setPreviewError(null);
 
     (async () => {
       try {
@@ -252,6 +258,8 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
         setPreviewIsPdf(isPdf(invoice.fileName, '') || blob.type.includes('pdf'));
       } catch {
         setPreviewError('Vista previa no disponible. Error al obtener el archivo.');
+      } finally {
+        setPreviewLoading(false);
       }
     })();
 
@@ -421,7 +429,12 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
             <CardTitle>Vista previa del archivo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {previewError ? (
+            {previewLoading ? (
+              <div className="flex min-h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md border bg-muted/30 p-6">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Cargando vista previa...</p>
+              </div>
+            ) : previewError ? (
               <div className="flex min-h-[200px] w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-muted/40 p-6 text-center">
                 <p className="text-sm font-medium text-destructive">Vista previa no disponible</p>
                 <p className="text-sm text-muted-foreground">{previewError}</p>

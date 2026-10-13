@@ -10,8 +10,8 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 ## 🚀 Características
 
 - ✅ **Autenticación Multi-Tenant**: Sistema de organizaciones con roles (Admin/Member)
-- 📄 **Subida de Facturas**: Soporta PDF e imágenes
-- 🤖 **Extracción con IA**: Groq AI extrae automáticamente proveedor, NIT, fechas y montos
+- 📄 **Subida de Facturas**: Soporta PDF, imágenes, ZIP y XML (factura electrónica DIAN)
+- 🤖 **Extracción automática**: factura electrónica (ZIP/XML → UBL 2.1) sin IA, y PDF/imágenes con IA (Groq)
 - ☁️ **Backup Automático**: Guardado en Supabase Storage y Google Drive del usuario
 - 📊 **Dashboard Inteligente**: Visualiza facturas, proveedores y resúmenes mensuales
 - 🔔 **Alertas de Vencimiento**: Notificaciones por email con SendGrid
@@ -29,6 +29,19 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 - **Emails**: SendGrid
 - **Payments**: Mercado Pago
 - **Deployment**: Vercel
+
+## 🏗️ Arquitectura
+
+Vista general de los componentes del sistema (capas, datos y servicios externos):
+
+![Arquitectura de EntraFactura](docs/arquitectura.png)
+
+Flujo completo de una factura, desde que entra (carga manual o correo) hasta que queda registrada:
+
+![Flujo de una factura](docs/flujo-factura.png)
+
+> Los diagramas también están en formato vectorial: `docs/arquitectura.svg` y `docs/flujo-factura.svg`.
+> Se pueden regenerar con `node scripts/generate-diagrams.mjs`.
 
 ## 📋 Requisitos Previos
 

@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { OrganizationProvider, useOrganization } from '@/lib/organization-context';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
+import { NavLink } from '@/components/nav-link';
+import { TopProgress } from '@/components/top-progress';
 import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
@@ -81,6 +82,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-background">
+      <TopProgress />
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -109,7 +111,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <nav className="flex-1 space-y-1 px-3 py-4">
                 {navigation.map((item) => {
                   const isActive = pathname === item.href;
-                  const Icon = item.icon;
                   const onboardingKey =
                     item.name === 'Facturas'
                       ? 'sidebar-facturas'
@@ -117,24 +118,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                         ? 'sidebar-config'
                         : undefined;
                   return (
-                    <Link
+                    <NavLink
                       key={item.name}
                       href={item.href}
-                      data-onboarding={onboardingKey}
-                      className={`
-                        flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
-                        transition-colors
-                        ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }
-                      `}
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <Icon className="h-5 w-5" />
-                      {item.name}
-                    </Link>
+                      name={item.name}
+                      icon={item.icon}
+                      active={isActive}
+                      onboardingKey={onboardingKey}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
                   );
                 })}
           </nav>

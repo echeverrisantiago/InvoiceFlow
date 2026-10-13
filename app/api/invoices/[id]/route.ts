@@ -47,6 +47,8 @@ export async function PATCH(
       select: {
         id: true,
         organizationId: true,
+        subtotal: true,
+        iva: true,
       },
     });
 
@@ -59,9 +61,32 @@ export async function PATCH(
 
     const invoiceItems = normalizeInvoiceItems(body.invoiceItems);
     const round2 = (value: number) => Math.round(value * 100) / 100;
-    const total = round2(invoiceItems.reduce((sum, item) => sum + (item.total ?? 0), 0));
-    const subtotal = round2(total / 1.19);
-    const iva = round2(total - subtotal);
+
+    const toNumber = (value: unknown): number | null => {
+      if (value === '' || value === null || value === undefined) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    // Prefer the totals sent by the client (the detail view already computes
+    // them from the extracted values). Fall back to deriving them from the
+    // line items using the invoice's effective IVA rate.
+    let subtotal = toNumber(body.subtotal);
+    let iva = toNumber(body.iva);
+    let total = toNumber(body.total);
+
+    if (subtotal === null || iva === null || total === null) {
+      const itemBase = round2(
+        invoiceItems.reduce((sum, item) => sum + (item.total ?? 0), 0)
+      );
+      const rate =
+        invoice.subtotal && invoice.subtotal > 0
+          ? (invoice.iva ?? 0) / invoice.subtotal
+          : 0.19;
+      subtotal = itemBase;
+      iva = round2(itemBase * rate);
+      total = round2(itemBase + iva);
+    }
 
     const updatedInvoice = await prisma.invoice.update({
       where: { id },
