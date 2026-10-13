@@ -72,6 +72,38 @@ interface PasswordResetEmailParams {
   resetUrl: string;
 }
 
+interface ReconnectAlertParams {
+  to: string;
+  email: string;
+  provider: string;
+}
+
+export async function sendReconnectAlert({ to, email, provider }: ReconnectAlertParams) {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
+    const providerName =
+      provider === 'GMAIL' ? 'Gmail' : provider === 'OUTLOOK' ? 'Outlook' : provider;
+    const html = generateReconnectAlertHtml({
+      email,
+      providerName,
+      settingsUrl: `${appUrl}/dashboard/settings`,
+    });
+
+    const msg = {
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL!,
+      subject: `Acción requerida: reconecta tu correo ${providerName}`,
+      html,
+    };
+
+    await sgMail.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error('SendGrid reconnect error:', error);
+    throw new Error(`Error al enviar email de reconexión: ${error.message}`);
+  }
+}
+
 export async function sendPasswordResetEmail({
   to,
   name,
@@ -364,6 +396,87 @@ function generateDueAlertHtml(
             <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #6b7280; margin: 0; font-size: 14px;">
                 © 2026 EntraFactura. Todos los derechos reservados.
+              </p>
+              <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
+                Este es un correo automático, por favor no responder.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+function generateReconnectAlertHtml({
+  email,
+  providerName,
+  settingsUrl,
+}: {
+  email: string;
+  providerName: string;
+  settingsUrl: string;
+}): string {
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reconecta tu correo</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background-color: #2563eb; padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">EntraFactura</h1>
+              <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Gestión Inteligente de Facturas</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <h2 style="color: #b45309; margin: 0 0 10px 0; font-size: 22px;">
+                ⚠️ Tu correo dejó de sincronizarse
+              </h2>
+              <p style="color: #6b7280; margin: 0 0 20px 0; font-size: 16px; line-height: 1.5;">
+                La conexión con tu cuenta de <strong>${providerName}</strong>
+                (<strong>${email}</strong>) dejó de funcionar porque el acceso fue revocado o caducó.
+                Mientras tanto, <strong>no se están importando nuevas facturas</strong> de ese correo.
+              </p>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 25px;">
+                <tr>
+                  <td style="padding: 14px 18px;">
+                    <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
+                      Para reanudar la sincronización, entra a <strong>Configuración → Correos</strong>
+                      y vuelve a conectar la cuenta.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 10px;">
+                <tr>
+                  <td align="center">
+                    <a href="${settingsUrl}"
+                       style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                      Reconectar mi correo
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; margin: 0; font-size: 14px;">
+                &copy; 2026 EntraFactura. Todos los derechos reservados.
               </p>
               <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
                 Este es un correo automático, por favor no responder.

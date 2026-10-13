@@ -6,6 +6,8 @@ import {
   Loader2,
   Trash2,
   Mail,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface EmailAccount {
@@ -14,6 +16,9 @@ interface EmailAccount {
   provider: string;
   isActive: boolean;
   lastCheckedAt: string | null;
+  needsReconnect: boolean;
+  lastError: string | null;
+  lastErrorAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,7 +147,11 @@ export function EmailAccountsForm({
                     >
                       {meta.label}
                     </span>
-                    {account.isActive ? (
+                    {account.needsReconnect ? (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                        Reconexión requerida
+                      </span>
+                    ) : account.isActive ? (
                       <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-400">
                         Activa
                       </span>
@@ -153,6 +162,41 @@ export function EmailAccountsForm({
                     )}
                   </div>
                 </div>
+
+                {account.needsReconnect && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium">Este correo dejó de sincronizarse</p>
+                      <p className="text-xs">
+                        El acceso fue revocado o caducó, así que no se están
+                        importando facturas nuevas.
+                        {account.lastErrorAt
+                          ? ` (${new Date(account.lastErrorAt).toLocaleString('es-CO')})`
+                          : ''}
+                      </p>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          className="mt-2"
+                          onClick={() =>
+                            handleOAuthConnect(
+                              account.provider === 'OUTLOOK' ? 'outlook' : 'gmail'
+                            )
+                          }
+                          disabled={connecting !== null}
+                        >
+                          {connecting !== null ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-3 w-3" />
+                          )}
+                          Reconectar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="text-xs text-muted-foreground">
                   {account.lastCheckedAt

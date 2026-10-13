@@ -60,10 +60,20 @@ export async function fetchNewEmails(
   let processed = 0;
   let skipped = 0;
 
-  const accessToken = await getAccessTokenForOAuth(config);
-  if (!accessToken) {
-    return { success: false, processed: 0, skipped: 0, errors: ['No se pudo obtener token de acceso OAuth'] };
+  const tokenResult = await getAccessTokenForOAuth(config);
+  if (!tokenResult.accessToken) {
+    return {
+      success: false,
+      processed: 0,
+      skipped: 0,
+      errors: [
+        tokenResult.needsReconnect
+          ? `La cuenta ${config.email} necesita reconexión (${tokenResult.error || 'token inválido'}).`
+          : tokenResult.error || 'No se pudo obtener token de acceso OAuth',
+      ],
+    };
   }
+  const accessToken = tokenResult.accessToken;
 
   const organization = await prisma.organization.findUnique({
     where: { id: config.organizationId },

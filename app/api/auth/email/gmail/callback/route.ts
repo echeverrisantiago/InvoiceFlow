@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
             ? new Date(tokens.expiry_date)
             : null,
           isActive: true,
+          needsReconnect: false,
+          lastError: null,
+          lastErrorAt: null,
         },
       });
     } else {

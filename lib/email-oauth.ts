@@ -29,14 +29,44 @@ export async function getGmailTokensFromCode(code: string) {
   return tokens;
 }
 
-export async function refreshGmailAccessToken(refreshToken: string) {
+export interface TokenRefreshResult {
+  accessToken: string | null;
+  expiryDate: Date | null;
+  /** True when the refresh failed because access was revoked/expired. */
+  isAuthError: boolean;
+  error?: string;
+}
+
+export async function refreshGmailAccessToken(
+  refreshToken: string
+): Promise<TokenRefreshResult> {
   const client = getGmailOAuth2Client();
   client.setCredentials({ refresh_token: refreshToken });
-  const { credentials } = await client.refreshAccessToken();
-  return {
-    accessToken: credentials.access_token,
-    expiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
-  };
+  try {
+    const { credentials } = await client.refreshAccessToken();
+    return {
+      accessToken: credentials.access_token ?? null,
+      expiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+      isAuthError: false,
+    };
+  } catch (error: any) {
+    const data = error?.response?.data;
+    const code = String(data?.error ?? error?.code ?? '');
+    const isAuthError =
+      code === 'invalid_grant' ||
+      code === 'invalid_client' ||
+      code === 'unauthorized_client' ||
+      /invalid_grant/i.test(String(error?.message ?? ''));
+    return {
+      accessToken: null,
+      expiryDate: null,
+      isAuthError,
+      error:
+        data?.error_description ||
+        error?.message ||
+        'Error al refrescar el token de Gmail',
+    };
+  }
 }
 
 const OUTLOOK_AUTHORITY = 'https://login.microsoftonline.com/common';
@@ -85,7 +115,9 @@ export async function getOutlookTokensFromCode(code: string) {
   };
 }
 
-export async function refreshOutlookAccessToken(refreshToken: string) {
+export async function refreshOutlookAccessToken(
+  refreshToken: string
+): Promise<TokenRefreshResult> {
   const body = new URLSearchParams({
     client_id: process.env.OUTLOOK_CLIENT_ID || '',
     client_secret: process.env.OUTLOOK_CLIENT_SECRET || '',
@@ -94,22 +126,50 @@ export async function refreshOutlookAccessToken(refreshToken: string) {
     scope: 'offline_access https://outlook.office.com/IMAP.AccessAsUser.All',
   });
 
-  const res = await fetch(OUTLOOK_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
+  try {
+    const res = await fetch(OUTLOOK_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Error al refrescar token de Outlook: ${err}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(errText);
+      } catch {
+        /* not JSON */
+      }
+      const code = String(parsed?.error ?? '');
+      const isAuthError =
+        code === 'invalid_grant' ||
+        code === 'invalid_client' ||
+        code === 'unauthorized_client' ||
+        /invalid_grant/i.test(errText) ||
+        /AADSTS70000|AADSTS50173|AADSTS70008|AADSTS50020/.test(errText);
+      return {
+        accessToken: null,
+        expiryDate: null,
+        isAuthError,
+        error: parsed?.error_description || errText || 'Error al refrescar token de Outlook',
+      };
+    }
+
+    const data = await res.json();
+    return {
+      accessToken: data.access_token ?? null,
+      expiryDate: data.expires_in
+        ? new Date(Date.now() + data.expires_in * 1000)
+        : null,
+      isAuthError: false,
+    };
+  } catch (error: any) {
+    return {
+      accessToken: null,
+      expiryDate: null,
+      isAuthError: false,
+      error: error?.message || 'Error de red al refrescar token de Outlook',
+    };
   }
-
-  const data = await res.json();
-  return {
-    accessToken: data.access_token,
-    expiryDate: data.expires_in
-      ? new Date(Date.now() + data.expires_in * 1000)
-      : null,
-  };
 }

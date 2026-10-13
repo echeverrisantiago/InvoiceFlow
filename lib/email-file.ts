@@ -21,6 +21,7 @@ export interface EmailAccountConfig {
   oauthRefreshToken: string | null;
   oauthAccessToken: string | null;
   oauthTokenExpiry: Date | null;
+  needsReconnect: boolean;
 }
 
 export async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -50,34 +51,106 @@ export function getImapSettings(provider: string): { host: string; port: number;
   return { host: '', port: 0, tls: false };
 }
 
-export async function getAccessTokenForOAuth(config: EmailAccountConfig): Promise<string | null> {
-  if (config.provider !== 'GMAIL' && config.provider !== 'OUTLOOK') return null;
-  if (!config.oauthRefreshToken) return null;
+export interface AccessTokenResult {
+  accessToken: string | null;
+  needsReconnect: boolean;
+  /** True only on the run where the account transitions to needsReconnect. */
+  justFlagged: boolean;
+  error?: string;
+}
+
+/**
+ * Marks the account as needing reconnection and, the first time it happens,
+ * notifies the organization admins by email.
+ */
+async function flagNeedsReconnect(
+  config: EmailAccountConfig,
+  error: string
+): Promise<boolean> {
+  const justFlagged = !config.needsReconnect;
+
+  await prisma.emailAccount.update({
+    where: { id: config.id },
+    data: {
+      needsReconnect: true,
+      lastError: error,
+      lastErrorAt: new Date(),
+    },
+  });
+
+  if (justFlagged) {
+    try {
+      const { notifyEmailReconnect } = await import('@/lib/email-reconnect');
+      await notifyEmailReconnect({
+        accountId: config.id,
+        organizationId: config.organizationId,
+        email: config.email,
+        provider: config.provider,
+        error,
+      });
+    } catch (notifyError) {
+      console.error('Error enviando aviso de reconexión:', notifyError);
+    }
+  }
+
+  return justFlagged;
+}
+
+export async function getAccessTokenForOAuth(
+  config: EmailAccountConfig
+): Promise<AccessTokenResult> {
+  if (config.provider !== 'GMAIL' && config.provider !== 'OUTLOOK') {
+    return {
+      accessToken: null,
+      needsReconnect: false,
+      justFlagged: false,
+      error: 'Proveedor de correo no soportado',
+    };
+  }
+
+  if (!config.oauthRefreshToken) {
+    const error = 'No hay refresh token almacenado';
+    const justFlagged = await flagNeedsReconnect(config, error);
+    return { accessToken: null, needsReconnect: true, justFlagged, error };
+  }
 
   const now = new Date();
   if (config.oauthTokenExpiry && config.oauthAccessToken && config.oauthTokenExpiry > now) {
-    return config.oauthAccessToken;
+    return { accessToken: config.oauthAccessToken, needsReconnect: false, justFlagged: false };
   }
 
-  let newToken: { accessToken?: string | null; expiryDate: Date | null };
-  if (config.provider === 'GMAIL') {
-    newToken = await refreshGmailAccessToken(config.oauthRefreshToken);
-  } else {
-    newToken = await refreshOutlookAccessToken(config.oauthRefreshToken);
-  }
+  const result =
+    config.provider === 'GMAIL'
+      ? await refreshGmailAccessToken(config.oauthRefreshToken)
+      : await refreshOutlookAccessToken(config.oauthRefreshToken);
 
-  if (newToken.accessToken) {
+  if (result.accessToken) {
     await prisma.emailAccount.update({
       where: { id: config.id },
       data: {
-        oauthAccessToken: newToken.accessToken,
-        oauthTokenExpiry: newToken.expiryDate,
+        oauthAccessToken: result.accessToken,
+        oauthTokenExpiry: result.expiryDate,
+        needsReconnect: false,
+        lastError: null,
+        lastErrorAt: null,
       },
     });
-    return newToken.accessToken;
+    return { accessToken: result.accessToken, needsReconnect: false, justFlagged: false };
   }
 
-  return null;
+  if (result.isAuthError) {
+    const error = result.error || 'Token revocado o caducado';
+    const justFlagged = await flagNeedsReconnect(config, error);
+    return { accessToken: null, needsReconnect: true, justFlagged, error };
+  }
+
+  // Transient (network) error: keep the previous state and do not alarm.
+  return {
+    accessToken: null,
+    needsReconnect: config.needsReconnect,
+    justFlagged: false,
+    error: result.error,
+  };
 }
 
 export function isInvoiceAttachment(att: {
@@ -154,10 +227,11 @@ export async function getInvoiceFileFromEmail({
     oauthRefreshToken: emailAccount.oauthRefreshToken,
     oauthAccessToken: emailAccount.oauthAccessToken,
     oauthTokenExpiry: emailAccount.oauthTokenExpiry,
+    needsReconnect: emailAccount.needsReconnect,
   };
 
-  const accessToken = await getAccessTokenForOAuth(config);
-  if (!accessToken) return null;
+  const tokenResult = await getAccessTokenForOAuth(config);
+  if (!tokenResult.accessToken) return null;
 
   const settings = getImapSettings(config.provider);
   const client = new ImapFlow({
@@ -165,7 +239,7 @@ export async function getInvoiceFileFromEmail({
     port: settings.port,
     auth: {
       user: config.email,
-      accessToken,
+      accessToken: tokenResult.accessToken,
     },
     secure: settings.tls,
     logger: false as const,

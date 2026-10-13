@@ -192,6 +192,12 @@ model EmailAccount {
   oauthAccessToken  String?     @db.Text
   oauthTokenExpiry  DateTime?
 
+  // Connection health: set when the OAuth token was revoked/expired and the
+  // mailbox can no longer be synced until the user reconnects it.
+  needsReconnect Boolean  @default(false)
+  lastError      String?  @db.Text
+  lastErrorAt    DateTime?
+
   isActive       Boolean        @default(true)
   lastCheckedAt  DateTime?
   lastEmailUid   BigInt?

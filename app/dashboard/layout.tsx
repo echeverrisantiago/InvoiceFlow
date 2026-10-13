@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { OrganizationProvider, useOrganization } from '@/lib/organization-context';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
+import { EmailReconnectBanner } from '@/components/email-reconnect-banner';
 import { NavLink } from '@/components/nav-link';
 import { TopProgress } from '@/components/top-progress';
 import { Button } from '@/components/ui/button';
@@ -175,6 +176,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
         <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-8">
           <TrialBanner />
+          <EmailReconnectBanner />
           {children}
         </main>
 
