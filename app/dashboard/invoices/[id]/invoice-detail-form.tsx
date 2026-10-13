@@ -71,9 +71,51 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     [items]
   );
 
-  const computedTotal = round2(itemTotals.reduce((sum, total) => sum + total, 0));
-  const computedSubtotal = round2(computedTotal / 1.19);
-  const computedIva = round2(computedTotal - computedSubtotal);
+  // Effective IVA rate derived from the extracted values (fallback 19%).
+  const derivedIvaRate = useMemo(() => {
+    const subtotal = invoice.subtotal ?? 0;
+    const iva = invoice.iva ?? 0;
+    if (subtotal > 0) return iva / subtotal;
+    return 0.19;
+  }, [invoice.subtotal, invoice.iva]);
+
+  // The extracted totals are the source of truth; they only change when the
+  // user edits the line items.
+  const [totals, setTotals] = useState(() => {
+    if (
+      invoice.subtotal != null ||
+      invoice.iva != null ||
+      invoice.total != null
+    ) {
+      return {
+        subtotal: round2(invoice.subtotal ?? 0),
+        iva: round2(invoice.iva ?? 0),
+        total: round2(invoice.total ?? 0),
+      };
+    }
+
+    const base = round2(
+      (invoice.invoiceItems ?? []).reduce(
+        (sum, item) => sum + (item.quantity ?? 0) * (item.unitPrice ?? 0),
+        0
+      )
+    );
+    const iva = round2(base * 0.19);
+    return { subtotal: base, iva, total: round2(base + iva) };
+  });
+
+  // Line item prices are the base (without IVA), so recompute the totals with
+  // the invoice's effective IVA rate when the items change.
+  const recalcTotals = (nextItems: InvoiceLineItem[]) => {
+    const base = round2(
+      nextItems.reduce(
+        (sum, item) => sum + (item.quantity ?? 0) * (item.unitPrice ?? 0),
+        0
+      )
+    );
+    const iva = round2(base * derivedIvaRate);
+    setTotals({ subtotal: base, iva, total: round2(base + iva) });
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -86,9 +128,9 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
         },
         body: JSON.stringify({
           ...form,
-          subtotal: computedSubtotal,
-          iva: computedIva,
-          total: computedTotal,
+          subtotal: totals.subtotal,
+          iva: totals.iva,
+          total: totals.total,
           invoiceItems: items,
         }),
       });
@@ -113,54 +155,62 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     field: keyof InvoiceLineItem,
     value: string
   ) => {
-    setItems((current) =>
-      current.map((item, itemIndex) => {
-        if (itemIndex !== index) {
-          return item;
-        }
+    const next = items.map((item, itemIndex) => {
+      if (itemIndex !== index) {
+        return item;
+      }
 
-        if (field === 'description') {
-          return { ...item, [field]: value };
-        }
+      if (field === 'description') {
+        return { ...item, [field]: value };
+      }
 
-        const numeric = value === '' ? null : Number(value);
+      const numeric = value === '' ? null : Number(value);
 
-        if (numeric !== null && numeric <= 0) {
-          return item;
-        }
+      if (numeric !== null && numeric <= 0) {
+        return item;
+      }
 
-        if (field === 'quantity' || field === 'unitPrice') {
-          const quantity = field === 'quantity' ? numeric : item.quantity;
-          const unitPrice = field === 'unitPrice' ? numeric : item.unitPrice;
-          return {
-            ...item,
-            [field]: numeric,
-            total: round2((quantity ?? 0) * (unitPrice ?? 0)),
-          };
-        }
-
+      if (field === 'quantity' || field === 'unitPrice') {
+        const quantity = field === 'quantity' ? numeric : item.quantity;
+        const unitPrice = field === 'unitPrice' ? numeric : item.unitPrice;
         return {
           ...item,
           [field]: numeric,
+          total: round2((quantity ?? 0) * (unitPrice ?? 0)),
         };
-      })
-    );
+      }
+
+      return {
+        ...item,
+        [field]: numeric,
+      };
+    });
+
+    setItems(next);
+
+    if (field === 'quantity' || field === 'unitPrice') {
+      recalcTotals(next);
+    }
   };
 
   const addItem = () => {
-    setItems((current) => [
-      ...current,
+    const next = [
+      ...items,
       {
         description: '',
         quantity: null,
         unitPrice: null,
         total: 0,
       },
-    ]);
+    ];
+    setItems(next);
+    recalcTotals(next);
   };
 
   const removeItem = (index: number) => {
-    setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    const next = items.filter((_, itemIndex) => itemIndex !== index);
+    setItems(next);
+    recalcTotals(next);
   };
 
   const pdf = isPdf(invoice.fileName, invoice.fileUrl);
@@ -331,15 +381,17 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                 <p className="text-sm font-medium">Resumen de totales</p>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-medium">{formatCurrency(computedSubtotal)}</span>
+                  <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">IVA (19%)</span>
-                  <span className="font-medium">{formatCurrency(computedIva)}</span>
+                  <span className="text-muted-foreground">
+                    IVA ({round2(derivedIvaRate * 100)}%)
+                  </span>
+                  <span className="font-medium">{formatCurrency(totals.iva)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-2 text-base">
                   <span className="font-semibold">Total</span>
-                  <span className="font-semibold">{formatCurrency(computedTotal)}</span>
+                  <span className="font-semibold">{formatCurrency(totals.total)}</span>
                 </div>
               </div>
             </div>
