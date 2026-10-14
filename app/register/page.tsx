@@ -16,12 +16,19 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('');
+  const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!accepted) {
+      toast.error('Debes aceptar los Términos y la Política de Privacidad');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -139,9 +146,41 @@ export default function RegisterPage() {
                 disabled={loading}
               />
             </div>
+            <div className="flex items-start gap-2">
+              <input
+                id="accept-terms"
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                disabled={loading}
+                required
+                className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-input accent-primary"
+              />
+              <Label
+                htmlFor="accept-terms"
+                className="cursor-pointer text-sm font-normal leading-snug text-muted-foreground"
+              >
+                Acepto los{' '}
+                <Link
+                  href="/terminos"
+                  target="_blank"
+                  className="text-primary hover:underline"
+                >
+                  Términos y Condiciones
+                </Link>{' '}
+                y la{' '}
+                <Link
+                  href="/privacidad"
+                  target="_blank"
+                  className="text-primary hover:underline"
+                >
+                  Política de Privacidad
+                </Link>
+              </Label>
+            </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !accepted}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

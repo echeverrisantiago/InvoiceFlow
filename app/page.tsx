@@ -64,7 +64,15 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t py-8">
-        <div className="container mx-auto px-4 text-center text-muted-foreground">
+        <div className="container mx-auto flex flex-col items-center gap-3 px-4 text-center text-sm text-muted-foreground">
+          <nav className="flex flex-wrap justify-center gap-4">
+            <Link href="/privacidad" className="transition-colors hover:text-foreground">
+              Política de Privacidad
+            </Link>
+            <Link href="/terminos" className="transition-colors hover:text-foreground">
+              Términos y Condiciones
+            </Link>
+          </nav>
           <p>&copy; 2026 EntraFactura. Todos los derechos reservados.</p>
         </div>
       </footer>
