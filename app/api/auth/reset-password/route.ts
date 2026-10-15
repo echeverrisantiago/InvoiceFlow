@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAdminClient } from '@/lib/supabase/admin';
+import {
+  enforceRateLimit,
+  getClientIp,
+  resetPasswordIpLimiter,
+} from '@/lib/ratelimit';
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -9,6 +14,12 @@ const resetPasswordSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimit(
+    resetPasswordIpLimiter,
+    `ip:${getClientIp(request)}`
+  );
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const parsed = resetPasswordSchema.safeParse(body);

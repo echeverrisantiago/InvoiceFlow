@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { enforceRateLimit, getClientIp, registerIpLimiter } from '@/lib/ratelimit';
 
 export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimit(
+    registerIpLimiter,
+    `ip:${getClientIp(request)}`
+  );
+  if (limited) return limited;
+
   try {
     const { authId, email, name, organizationName } = await request.json();
 

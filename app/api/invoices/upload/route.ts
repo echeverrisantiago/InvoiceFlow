@@ -9,6 +9,7 @@ import {
   isXmlFileName,
   isZipFileName,
 } from '@/lib/file-types';
+import { enforceRateLimit, uploadOrgLimiter } from '@/lib/ratelimit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +21,12 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    const limited = await enforceRateLimit(
+      uploadOrgLimiter,
+      `org:${context.organization.id}`
+    );
+    if (limited) return limited;
 
     if (!context.subscription.isActive) {
       return NextResponse.json(

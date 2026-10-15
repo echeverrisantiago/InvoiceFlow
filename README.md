@@ -343,10 +343,59 @@ Vercel ejecuta automáticamente `postinstall` script que incluye `prisma generat
 - ✅ **RLS (Row Level Security)** en todas las tablas de Supabase
 - ✅ **Validación de tenant** en todos los endpoints API
 - ✅ **Sanitización de archivos** antes de almacenar
-- ✅ **Rate limiting** en endpoints de upload (con Upstash Redis)
+- ✅ **Rate limiting** en endpoints sensibles (con Upstash Redis)
 - ✅ **Validación de entrada** con Zod schemas
 - ✅ **CRON_SECRET** para proteger endpoints de cron
 - ✅ **Tokens encriptados** para Google Drive (almacenados en DB)
+
+### Rate limiting (Upstash Redis)
+
+Implementado en `lib/ratelimit.ts`. Requiere `UPSTASH_REDIS_REST_URL` y
+`UPSTASH_REDIS_REST_TOKEN` válidas (URL `https://`). Si faltan, tienen los
+valores de ejemplo (`your_upstash_*`) o Redis no responde, el sistema opera en
+modo **fail-open**: la petición pasa sin limitar para no tumbar el servicio por
+una dependencia externa.
+
+| Endpoint | Clave | Límite |
+|----------|-------|--------|
+| `POST /api/auth/register` | IP | 5 / 10 min |
+| `POST /api/auth/trial-register` | IP | 5 / hora |
+| `POST /api/auth/forgot-password` | IP + email | 5 / 15 min · 3 / hora |
+| `POST /api/auth/reset-password` | IP | 10 / 15 min |
+| `GET /api/auth/reset-password/validate` | IP | 10 / 15 min |
+| `POST /api/invoices/upload` | organización | 60 / hora |
+| `POST /api/invoices/[id]/extract` | organización | 60 / hora |
+
+Al exceder el límite se responde `429` con `Retry-After` y headers
+`X-RateLimit-*`, y body `{ "error": "...", "code": "RATE_LIMITED" }`.
+
+### Rate limiting de Supabase Auth (login/signup)
+
+Login (`signInWithPassword`) y signup (`signUp`) van directo a Supabase desde el
+navegador, así que no pasan por el rate limiting de Upstash. Se configuran en
+**Supabase Dashboard → Authentication → Rate Limits**. Valores recomendados:
+
+| Campo en el dashboard | Por defecto | Recomendado |
+|-----------------------|-------------|-------------|
+| Rate limit for sign-ups and sign-ins | 30 / 5 min | 10 / 5 min |
+| Rate limit for token refreshes (incluye el login) | 150 / 5 min | 60 / 5 min |
+| Rate limit for sending emails | 2 / hora | Dejar por defecto* |
+| Rate limit for sending SMS messages | 30 / hora | Dejar desactivado (no se usa SMS) |
+| Rate limit for token verifications | 30 / 5 min | Dejar desactivado (no se usa OTP/magic link) |
+| Rate limit for anonymous users | 30 / hora | Dejar desactivado (no se usa login anónimo) |
+| Rate limit for Web3 sign-ups and sign-ins | 30 / 5 min | Dejar desactivado (no se usa Web3) |
+
+\* El campo de correos solo aplica a los emails de Supabase Auth (confirmación,
+invitación). La recuperación de contraseña de la app usa su propia API con
+SendGrid. Con SMTP propio configurado (`Authentication → Emails`), el tope
+interno de 2/hora deja de aplicar; solo actívalo si quieres un tope explícito.
+
+> Regla general: configura un rate limit **solo cuando la función subyacente esté
+> activa**. Los campos de SMS, anónimo y Web3 pueden quedar desactivados con su
+> valor por defecto sin ningún riesgo, porque esas operaciones no ocurren.
+
+> El campo "token refreshes" cubre el endpoint `/auth/v1/token`, que incluye el
+> login con contraseña; es la **única** protección de fuerza bruta del login.
 
 ## 📝 Próximos Pasos (Post-MVP)
 

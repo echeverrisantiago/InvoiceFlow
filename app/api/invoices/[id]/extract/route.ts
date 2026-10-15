@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
 import { createClient } from '@/lib/supabase/server';
+import { enforceRateLimit, extractOrgLimiter } from '@/lib/ratelimit';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -76,6 +77,12 @@ export async function POST(
         { status: 401 }
       );
     }
+
+    const limited = await enforceRateLimit(
+      extractOrgLimiter,
+      `org:${context.organization.id}`
+    );
+    if (limited) return limited;
 
     if (!context.subscription.isActive) {
       return NextResponse.json(

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { sendPasswordResetEmail } from '@/lib/email';
+import {
+  enforceRateLimit,
+  forgotPasswordEmailLimiter,
+  forgotPasswordIpLimiter,
+  getClientIp,
+} from '@/lib/ratelimit';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Correo electrónico inválido'),
@@ -20,6 +26,18 @@ export async function POST(request: NextRequest) {
     }
 
     const { email } = parsed.data;
+
+    const ipLimited = await enforceRateLimit(
+      forgotPasswordIpLimiter,
+      `ip:${getClientIp(request)}`
+    );
+    if (ipLimited) return ipLimited;
+
+    const emailLimited = await enforceRateLimit(
+      forgotPasswordEmailLimiter,
+      `email:${email.toLowerCase()}`
+    );
+    if (emailLimited) return emailLimited;
 
     const user = await prisma.user.findUnique({
       where: { email },

@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { sendActivationEmail } from '@/lib/email';
 import { generateTemporaryPassword } from '@/lib/utils';
+import {
+  enforceRateLimit,
+  getClientIp,
+  trialRegisterIpLimiter,
+} from '@/lib/ratelimit';
 
 const allowedOrigins = [
   'https://landing.entrafactura.com',
@@ -77,6 +82,13 @@ async function rollbackTrialUser({
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimit(
+    trialRegisterIpLimiter,
+    `ip:${getClientIp(request)}`,
+    corsHeaders(request)
+  );
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const parsed = trialRegisterSchema.safeParse(body);

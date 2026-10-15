@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import {
+  enforceRateLimit,
+  getClientIp,
+  resetPasswordIpLimiter,
+} from '@/lib/ratelimit';
 
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimit(
+    resetPasswordIpLimiter,
+    `ip:${getClientIp(request)}`
+  );
+  if (limited) return limited;
+
   try {
     const token = request.nextUrl.searchParams.get('token');
 
