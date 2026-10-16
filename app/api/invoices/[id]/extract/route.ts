@@ -8,6 +8,7 @@ import { getInvoiceFileFromEmail } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
 import { createClient } from '@/lib/supabase/server';
 import { enforceRateLimit, extractOrgLimiter } from '@/lib/ratelimit';
+import { decryptToken } from '@/lib/token-crypto';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -188,20 +189,21 @@ export async function POST(
     });
 
     // Upload to Google Drive (if configured)
-    if (invoice.organization.driveRefreshToken) {
+    const driveRefreshToken = decryptToken(invoice.organization.driveRefreshToken);
+    if (driveRefreshToken) {
       try {
         const driveFileId = await uploadToDrive(
           emailFile
             ? {
                 fileName: invoice.fileName,
-                refreshToken: invoice.organization.driveRefreshToken,
+                refreshToken: driveRefreshToken,
                 buffer: emailFile.buffer,
                 contentType: emailFile.mimeType,
               }
             : {
                 fileUrl: invoice.fileUrl,
                 fileName: invoice.fileName,
-                refreshToken: invoice.organization.driveRefreshToken,
+                refreshToken: driveRefreshToken,
               }
         );
 

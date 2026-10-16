@@ -3,6 +3,7 @@ import { getOutlookTokensFromCode } from '@/lib/email-oauth';
 import { getTenantContext } from '@/lib/with-tenant';
 import { getEmailAccountQuota } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
+import { encryptToken } from '@/lib/token-crypto';
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,8 +63,8 @@ export async function GET(request: NextRequest) {
         where: { id: existing.id },
         data: {
           provider: 'OUTLOOK',
-          oauthRefreshToken: tokens.refresh_token,
-          oauthAccessToken: tokens.access_token || null,
+          oauthRefreshToken: encryptToken(tokens.refresh_token),
+          oauthAccessToken: encryptToken(tokens.access_token || null),
           oauthTokenExpiry: tokens.expiry_date
             ? new Date(tokens.expiry_date)
             : null,
@@ -89,8 +90,8 @@ export async function GET(request: NextRequest) {
           organizationId,
           email: emailFromToken || 'outlook-user@unknown.com',
           provider: 'OUTLOOK',
-          oauthRefreshToken: tokens.refresh_token,
-          oauthAccessToken: tokens.access_token || null,
+          oauthRefreshToken: encryptToken(tokens.refresh_token),
+          oauthAccessToken: encryptToken(tokens.access_token || null),
           oauthTokenExpiry: tokens.expiry_date
             ? new Date(tokens.expiry_date)
             : null,

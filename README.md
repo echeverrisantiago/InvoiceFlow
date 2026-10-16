@@ -15,7 +15,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 - ☁️ **Backup Automático**: Guardado en Supabase Storage y Google Drive del usuario
 - 📊 **Dashboard Inteligente**: Visualiza facturas, proveedores y resúmenes mensuales
 - 🔔 **Alertas de Vencimiento**: Notificaciones por email con SendGrid
-- 💳 **Suscripciones**: Planes Starter y Pro con Mercado Pago
+- 💳 **Suscripciones**: Planes Básico, Profesional y Empresarial con Mercado Pago
 - 📱 **Responsive**: UI moderna con Tailwind CSS y shadcn/ui
 
 ## 🛠️ Stack Tecnológico
@@ -346,7 +346,7 @@ Vercel ejecuta automáticamente `postinstall` script que incluye `prisma generat
 - ✅ **Rate limiting** en endpoints sensibles (con Upstash Redis)
 - ✅ **Validación de entrada** con Zod schemas
 - ✅ **CRON_SECRET** para proteger endpoints de cron
-- ✅ **Tokens encriptados** para Google Drive (almacenados en DB)
+- ✅ **Tokens OAuth cifrados** a nivel de aplicación (AES-256-GCM, `lib/token-crypto.ts`)
 
 ### Rate limiting (Upstash Redis)
 
@@ -397,18 +397,57 @@ interno de 2/hora deja de aplicar; solo actívalo si quieres un tope explícito.
 > El campo "token refreshes" cubre el endpoint `/auth/v1/token`, que incluye el
 > login con contraseña; es la **única** protección de fuerza bruta del login.
 
+### Cifrado de tokens OAuth
+
+Los refresh/access tokens de Google Drive, OneDrive, Gmail y Outlook se guardan
+**cifrados** en la base de datos con **AES-256-GCM** (autenticado, con IV
+aleatorio por valor). La implementación está en `lib/token-crypto.ts` y el
+formato en disco es `enc:v1:<iv>:<tag>:<ciphertext>` (todo en base64).
+
+Requiere la variable `TOKEN_ENCRYPTION_KEY` (32 bytes en base64):
+
+```bash
+npm run gen:encryption-key   # genera una clave nueva
+```
+
+Agrégala en `.env` (local) y en las variables de entorno de Vercel
+(producción). **Debe ser la misma clave** en todos los entornos que compartan
+base de datos: si cambia, los tokens guardados ya no podrán descifrarse y los
+usuarios tendrán que reconectar sus cuentas.
+
+Para cifrar los tokens que ya estaban en texto plano (migración única e
+idempotente):
+
+```bash
+npm run encrypt:tokens
+```
+
+Columnas afectadas: `organizations.driveRefreshToken`,
+`organizations.onedriveRefreshToken`, `email_accounts.oauthRefreshToken` y
+`email_accounts.oauthAccessToken`. Los valores heredados sin cifrar se siguen
+leyendo (pass-through), de modo que la migración puede ser gradual.
+
 ## 📝 Próximos Pasos (Post-MVP)
 
-- [ ] Edición manual de facturas extraídas
-- [ ] Categorización de gastos
-- [ ] Reportes y exportación a Excel/PDF
-- [ ] Análisis predictivo de gastos
-- [ ] Workflow de aprobación de facturas
-- [ ] Integración con sistemas contables
-- [ ] Multi-currency support
-- [ ] OCR mejorado para facturas escaneadas
-- [ ] App móvil nativa
-- [ ] API pública para integraciones
+### ✅ Ya implementado
+- Edición manual de facturas extraídas (formulario de detalle + `PATCH /api/invoices/[id]`)
+- Exportación de facturas a Excel (`.xlsx`) en `/api/invoices/export`
+- Extracción de factura electrónica DIAN (XML/ZIP) sin IA y por IA (PDF/imagen)
+- Dashboard con KPIs, top de proveedores y resumen del mes
+- Sincronización de correo (Gmail/Outlook) y respaldo en Google Drive/OneDrive
+- Rate limiting, cifrado de tokens OAuth y páginas legales (Privacidad/Términos)
+
+### 🚧 Pendientes
+- Reportes y gráficos (hay `recharts` instalado pero sin uso)
+- Exportación a PDF
+- Categorización de gastos
+- Análisis predictivo de gastos
+- Workflow de aprobación de facturas
+- Integración con sistemas contables
+- Soporte multi-moneda
+- Extracción/OCR más robusto para facturas escaneadas
+- App móvil nativa
+- API pública para integraciones
 
 ## 🐛 Troubleshooting
 

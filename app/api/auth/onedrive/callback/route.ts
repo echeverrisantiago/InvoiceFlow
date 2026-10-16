@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOneDriveTokensFromCode } from '@/lib/onedrive';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
+import { encryptToken } from '@/lib/token-crypto';
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
         id: context.organization.id,
       },
       data: {
-        onedriveRefreshToken: tokens.refresh_token,
+        onedriveRefreshToken: encryptToken(tokens.refresh_token),
         onedriveTokenExpiry: tokens.expiry_date
           ? new Date(tokens.expiry_date)
           : null,

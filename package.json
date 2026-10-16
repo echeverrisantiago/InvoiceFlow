@@ -9,6 +9,8 @@
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
+    "gen:encryption-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    "encrypt:tokens": "node scripts/encrypt-existing-tokens.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

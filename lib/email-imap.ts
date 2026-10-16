@@ -16,6 +16,7 @@ import {
 } from '@/lib/email-file';
 import { getInvoiceQuota } from '@/lib/plans';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
+import { decryptToken } from '@/lib/token-crypto';
 
 const MAX_EMAILS_PER_RUN = 50;
 
@@ -273,10 +274,13 @@ export async function fetchNewEmails(
                   },
                 });
 
-                if (config.provider === 'GMAIL' && org?.driveRefreshToken) {
-                  await backupToDrive({ buffer, mimeType, fileName, refreshToken: org.driveRefreshToken, invoiceId: invoice.id });
-                } else if (config.provider === 'OUTLOOK' && org?.onedriveRefreshToken) {
-                  await backupToOneDrive({ buffer, contentType: mimeType, fileName, refreshToken: org.onedriveRefreshToken, invoiceId: invoice.id });
+                const driveRefreshToken = decryptToken(org?.driveRefreshToken);
+                const onedriveRefreshToken = decryptToken(org?.onedriveRefreshToken);
+
+                if (config.provider === 'GMAIL' && driveRefreshToken) {
+                  await backupToDrive({ buffer, mimeType, fileName, refreshToken: driveRefreshToken, invoiceId: invoice.id });
+                } else if (config.provider === 'OUTLOOK' && onedriveRefreshToken) {
+                  await backupToOneDrive({ buffer, contentType: mimeType, fileName, refreshToken: onedriveRefreshToken, invoiceId: invoice.id });
                 }
               } else {
                 await prisma.invoice.update({

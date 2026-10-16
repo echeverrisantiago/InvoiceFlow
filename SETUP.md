@@ -59,6 +59,20 @@ Fill in each section:
 2. Create application
 3. Copy TEST credentials (Access Token and Public Key)
 
+#### Clave de cifrado de tokens OAuth
+1. Genera una clave de 32 bytes:
+   ```bash
+   npm run gen:encryption-key
+   ```
+2. Copia el resultado en `TOKEN_ENCRYPTION_KEY` (en `.env` / `.env.local` y en
+   las variables de entorno de Vercel).
+3. Si la base de datos ya tenía tokens en texto plano, cífralos una vez:
+   ```bash
+   npm run encrypt:tokens
+   ```
+   Los valores heredados sin cifrar se leen igual (pass-through), así que este
+   paso es seguro y opcional para bases de datos nuevas.
+
 ### 3. Setup Supabase Database (10 min)
 
 #### Create Storage Bucket
@@ -202,6 +216,7 @@ If you encounter issues:
 
 Before going live:
 - [ ] All environment variables configured
+- [ ] `TOKEN_ENCRYPTION_KEY` configured (and `npm run encrypt:tokens` run if the DB already had tokens)
 - [ ] Database migrations run successfully
 - [ ] Test registration and login
 - [ ] Test invoice upload and extraction

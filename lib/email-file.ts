@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { isXmlFileName, isZipFileName, looksLikeDianInvoiceXml } from '@/lib/file-types';
 
 export const IMAP_CONNECT_TIMEOUT = 30_000;
@@ -116,19 +117,24 @@ export async function getAccessTokenForOAuth(
 
   const now = new Date();
   if (config.oauthTokenExpiry && config.oauthAccessToken && config.oauthTokenExpiry > now) {
-    return { accessToken: config.oauthAccessToken, needsReconnect: false, justFlagged: false };
+    return {
+      accessToken: decryptToken(config.oauthAccessToken),
+      needsReconnect: false,
+      justFlagged: false,
+    };
   }
 
+  const refreshToken = decryptToken(config.oauthRefreshToken);
   const result =
     config.provider === 'GMAIL'
-      ? await refreshGmailAccessToken(config.oauthRefreshToken)
-      : await refreshOutlookAccessToken(config.oauthRefreshToken);
+      ? await refreshGmailAccessToken(refreshToken)
+      : await refreshOutlookAccessToken(refreshToken);
 
   if (result.accessToken) {
     await prisma.emailAccount.update({
       where: { id: config.id },
       data: {
-        oauthAccessToken: result.accessToken,
+        oauthAccessToken: encryptToken(result.accessToken),
         oauthTokenExpiry: result.expiryDate,
         needsReconnect: false,
         lastError: null,
