@@ -159,12 +159,6 @@ export default async function SettingsPage({
               </p>
               <p className="text-lg font-semibold">{organization?.name}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Tu Rol</p>
-              <p className="text-lg font-semibold capitalize">
-                {context.organization.role.toLowerCase()}
-              </p>
-            </div>
           </div>
         </CardContent>
       </Card>
