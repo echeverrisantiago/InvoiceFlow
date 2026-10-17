@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
@@ -94,16 +94,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = getAdminClient();
 
     // Generate unique file path
     const fileExt = file.name.split('.').pop();
-    const fileName = `${nanoid()}.${fileExt}`;
-    const filePath = `${context.organization.id}/${fileName}`;
+    const storageName = `${nanoid()}.${fileExt}`;
+    const filePath = `${context.organization.id}/${storageName}`;
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage (private bucket, service-role client)
     const fileBuffer = await file.arrayBuffer();
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('invoices')
       .upload(filePath, fileBuffer, {
         contentType: file.type,
@@ -118,18 +118,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('invoices')
-      .getPublicUrl(filePath);
-
-    // Create invoice record in database
+    // Create invoice record in database. `filePath` is the Storage object path
+    // (served via signed URL); `fileUrl` is the internal API endpoint.
+    const invoiceId = nanoid();
     const invoice = await prisma.invoice.create({
       data: {
+        id: invoiceId,
         organizationId: context.organization.id,
         uploadedById: context.user.id,
         fileName: file.name,
-        fileUrl: urlData.publicUrl,
+        filePath,
+        fileUrl: `/api/invoices/${invoiceId}/file`,
         fileSize: file.size,
         status: 'PROCESSING',
         paymentStatus: 'PENDING',
@@ -139,7 +138,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       invoiceId: invoice.id,
-      fileUrl: urlData.publicUrl,
+      fileUrl: invoice.fileUrl,
     });
   } catch (error: any) {
     console.error('Upload error:', error);

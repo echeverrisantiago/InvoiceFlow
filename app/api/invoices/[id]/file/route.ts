@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
 import { getPreviewFile } from '@/lib/electronic-invoice';
 import { isZipFile } from '@/lib/file-types';
+import { getAdminClient } from '@/lib/supabase/admin';
+import { resolveInvoiceStoragePath } from '@/lib/invoice-storage';
 
 interface PreviewFile {
   buffer: Buffer;
@@ -44,22 +46,28 @@ export async function GET(
     return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 });
   }
 
-  // Manual uploads are stored in Supabase Storage.
+  // Manual uploads are stored in the (private) `invoices` bucket.
   if (invoice.source !== 'EMAIL' || !invoice.emailAccountId || !invoice.messageUid) {
-    if (!invoice.fileUrl) {
+    const storagePath = resolveInvoiceStoragePath(invoice);
+    if (!storagePath) {
       return NextResponse.json(
         { error: 'Vista previa no disponible para esta factura' },
         { status: 404 }
       );
     }
 
+    const supabase = getAdminClient();
+
     // Electronic invoices (ZIP): extract the embedded PDF for preview.
     if (isZipFile(undefined, invoice.fileName)) {
       try {
-        const response = await fetch(invoice.fileUrl);
-        if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
-          const mimeType = response.headers.get('content-type') || 'application/zip';
+        const { data, error } = await supabase.storage
+          .from('invoices')
+          .download(storagePath);
+
+        if (!error && data) {
+          const buffer = Buffer.from(await data.arrayBuffer());
+          const mimeType = data.type || 'application/zip';
           return fileResponse(getPreviewFile(buffer, mimeType, invoice.fileName));
         }
       } catch (error: unknown) {
@@ -67,7 +75,19 @@ export async function GET(
       }
     }
 
-    return NextResponse.redirect(invoice.fileUrl, 307);
+    const { data: signed, error: signedError } = await supabase.storage
+      .from('invoices')
+      .createSignedUrl(storagePath, 300);
+
+    if (signedError || !signed?.signedUrl) {
+      console.error('Error creando URL firmada:', signedError);
+      return NextResponse.json(
+        { error: 'Vista previa no disponible para esta factura' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.redirect(signed.signedUrl, 307);
   }
 
   try {

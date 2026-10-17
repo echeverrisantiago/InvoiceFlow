@@ -141,6 +141,8 @@ model Invoice {
   // File information
   fileName String
   fileUrl  String
+  // Storage object path within the `invoices` bucket (manual uploads only).
+  filePath String?
   fileSize Int?
 
   // Email source (preview fetched live from the inbox when set)

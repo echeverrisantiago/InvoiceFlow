@@ -214,25 +214,22 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     recalcTotals(next);
   };
 
-  const pdf = isPdf(invoice.fileName, invoice.fileUrl);
   const isZip = isZipFileName(invoice.fileName);
   const fileEndpoint = `/api/invoices/${invoice.id}/file`;
-  // ZIPs are previewed through the API, which serves the embedded PDF.
-  const displayUrl = isZip ? fileEndpoint : invoice.fileUrl;
+  // Todos los archivos se sirven a través de la API, que valida sesión/tenant y
+  // devuelve una URL firmada del bucket privado. ZIPs se previsualizan por el
+  // endpoint (extrae el PDF embebido).
+  const displayUrl = fileEndpoint;
   const downloadName = isZip
     ? invoice.fileName.replace(/\.zip$/i, '.pdf')
     : invoice.fileName;
 
-  const needsFetch = invoice.source === 'EMAIL' || isZip;
-
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewSrc, setPreviewSrc] = useState<string>(isZip ? fileEndpoint : invoice.fileUrl);
-  const [previewIsPdf, setPreviewIsPdf] = useState<boolean>(pdf);
-  const [previewLoading, setPreviewLoading] = useState<boolean>(needsFetch);
+  const [previewSrc, setPreviewSrc] = useState<string>(fileEndpoint);
+  const [previewIsPdf, setPreviewIsPdf] = useState<boolean>(isPdf(invoice.fileName, ''));
+  const [previewLoading, setPreviewLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    if (invoice.source !== 'EMAIL' && !isZip) return;
-
     let objectUrl: string | null = null;
     setPreviewLoading(true);
     setPreviewError(null);
@@ -266,7 +263,7 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [invoice.source, invoice.fileName, isZip, displayUrl]);
+  }, [displayUrl, invoice.fileName]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -439,8 +436,9 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                 <p className="text-sm font-medium text-destructive">Vista previa no disponible</p>
                 <p className="text-sm text-muted-foreground">{previewError}</p>
                 <p className="text-xs text-muted-foreground">
-                  Esta factura fue importada desde un correo electrónico. Si el correo fue
-                  cambiado, eliminado o el mensaje ya no existe, el archivo no puede mostrarse.
+                  El archivo no pudo mostrarse. Si la factura se importó desde un correo y el
+                  mensaje ya no existe, o el archivo fue eliminado del almacenamiento, la vista
+                  previa no estará disponible.
                 </p>
               </div>
             ) : previewIsPdf ? (

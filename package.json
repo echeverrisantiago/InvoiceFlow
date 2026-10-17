@@ -11,6 +11,8 @@
     "test:run": "vitest run",
     "gen:encryption-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
     "encrypt:tokens": "node scripts/encrypt-existing-tokens.mjs",
+    "migrate:file-paths": "node scripts/migrate-invoice-file-paths.mjs",
+    "storage:private": "node scripts/set-invoices-bucket-private.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

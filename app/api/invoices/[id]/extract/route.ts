@@ -6,9 +6,10 @@ import { uploadToDrive } from '@/lib/drive';
 import { Prisma } from '@prisma/client';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
-import { createClient } from '@/lib/supabase/server';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { enforceRateLimit, extractOrgLimiter } from '@/lib/ratelimit';
 import { decryptToken } from '@/lib/token-crypto';
+import { resolveInvoiceStoragePath } from '@/lib/invoice-storage';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
   const today = new Date();
@@ -21,36 +22,20 @@ function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
 }
 
 /**
- * Extracts the Supabase Storage object path from a public URL
- * (e.g. https://x.supabase.co/storage/v1/object/public/invoices/org/file.zip).
- */
-function getStoragePathFromUrl(fileUrl: string): string | null {
-  const marker = '/object/public/invoices/';
-  const index = fileUrl.indexOf(marker);
-  if (index === -1) return null;
-  const path = fileUrl.slice(index + marker.length).split('?')[0];
-  if (!path) return null;
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-}
-
-/**
  * Removes an invoice that should not be registered, along with its uploaded
  * file in Supabase Storage (manual uploads) to avoid orphaned objects.
  */
 async function discardInvoice(invoice: {
   id: string;
+  filePath: string | null;
   fileUrl: string;
   source: string;
 }): Promise<void> {
   if (invoice.source !== 'EMAIL') {
-    const storagePath = getStoragePathFromUrl(invoice.fileUrl);
+    const storagePath = resolveInvoiceStoragePath(invoice);
     if (storagePath) {
       try {
-        const supabase = await createClient();
+        const supabase = getAdminClient();
         await supabase.storage.from('invoices').remove([storagePath]);
       } catch (error) {
         console.error('Error eliminando archivo de Supabase Storage:', error);
@@ -116,19 +101,40 @@ export async function POST(
       );
     }
 
-    // Resolve the invoice file. Email-sourced invoices are fetched live from the inbox.
-    let emailFile: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
+    // Resolve the invoice file.
+    // - Email-sourced invoices are fetched live from the inbox.
+    // - Manual uploads live in the private `invoices` bucket (downloaded via Storage API).
+    let invoiceFile: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
+
     if (invoice.source === 'EMAIL' && invoice.emailAccountId && invoice.messageUid) {
-      emailFile = await getInvoiceFileFromEmail({
+      invoiceFile = await getInvoiceFileFromEmail({
         emailAccountId: invoice.emailAccountId,
         messageUid: invoice.messageUid,
         attachmentFilename: invoice.attachmentFilename,
       });
+    } else {
+      const storagePath = resolveInvoiceStoragePath(invoice);
+      if (storagePath) {
+        const supabase = getAdminClient();
+        const { data, error } = await supabase.storage
+          .from('invoices')
+          .download(storagePath);
+
+        if (!error && data) {
+          invoiceFile = {
+            buffer: Buffer.from(await data.arrayBuffer()),
+            mimeType: data.type || 'application/pdf',
+            fileName: invoice.fileName,
+          };
+        } else if (error) {
+          console.error('Error descargando archivo de Storage:', error);
+        }
+      }
     }
 
     // Extract data (electronic invoice XML when available, otherwise AI)
-    const extraction = emailFile
-      ? await extractInvoiceData(emailFile.buffer, emailFile.mimeType, emailFile.fileName)
+    const extraction = invoiceFile
+      ? await extractInvoiceData(invoiceFile.buffer, invoiceFile.mimeType, invoiceFile.fileName)
       : await extractInvoiceData(invoice.fileUrl, undefined, invoice.fileName);
 
     if (!extraction.success || !extraction.data) {
@@ -154,6 +160,7 @@ export async function POST(
     ) {
       await discardInvoice({
         id: invoice.id,
+        filePath: invoice.filePath,
         fileUrl: invoice.fileUrl,
         source: invoice.source,
       });
@@ -193,12 +200,12 @@ export async function POST(
     if (driveRefreshToken) {
       try {
         const driveFileId = await uploadToDrive(
-          emailFile
+          invoiceFile
             ? {
                 fileName: invoice.fileName,
                 refreshToken: driveRefreshToken,
-                buffer: emailFile.buffer,
-                contentType: emailFile.mimeType,
+                buffer: invoiceFile.buffer,
+                contentType: invoiceFile.mimeType,
               }
             : {
                 fileUrl: invoice.fileUrl,

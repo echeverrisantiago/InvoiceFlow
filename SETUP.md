@@ -78,7 +78,10 @@ Fill in each section:
 #### Create Storage Bucket
 1. Go to Storage in Supabase dashboard
 2. Create new bucket named `invoices`
-3. Make it public
+3. Keep it **private** (Public bucket: OFF)
+
+Los archivos se sirven con URLs firmadas desde `/api/invoices/[id]/file`, así que
+el bucket debe permanecer privado.
 
 #### Run Database Migrations
 ```bash

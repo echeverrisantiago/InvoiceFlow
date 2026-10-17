@@ -23,7 +23,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 - **Frontend**: Next.js 15 (App Router), React 19, TailwindCSS, shadcn/ui
 - **Backend**: Next.js API Routes, Server Actions
 - **Database**: PostgreSQL (Supabase) con Prisma ORM
-- **Auth**: Supabase Auth con Row Level Security (RLS)
+- **Auth**: Supabase Auth (sesiones con cookies SSR)
 - **Storage**: Supabase Storage + Google Drive API
 - **IA**: Groq (LangChain.js) con llama-3.3-70b-versatile
 - **Emails**: SendGrid
@@ -157,9 +157,9 @@ CRON_SECRET=genera_un_secreto_aleatorio_seguro
 
 1. Ve a tu proyecto de Supabase > Storage
 2. Crea un bucket llamado `invoices`
-3. Configura como público:
-   - Settings > Public bucket: ON
-4. Políticas de acceso se manejan con RLS en Prisma
+3. Déjalo **privado** (Settings > Public bucket: **OFF**)
+4. Los archivos se sirven con **URLs firmadas** de corta duración desde
+   `/api/invoices/[id]/file`; no hay acceso público directo.
 
 ### 5. Configurar la base de datos
 
@@ -340,7 +340,8 @@ Vercel ejecuta automáticamente `postinstall` script que incluye `prisma generat
 
 ## 🔒 Seguridad
 
-- ✅ **RLS (Row Level Security)** en todas las tablas de Supabase
+- ✅ **Aislamiento multi-tenant a nivel de aplicación** (Prisma + `organizationId` en cada consulta)
+- ✅ **Bucket de Storage privado** con URLs firmadas de corta duración
 - ✅ **Validación de tenant** en todos los endpoints API
 - ✅ **Sanitización de archivos** antes de almacenar
 - ✅ **Rate limiting** en endpoints sensibles (con Upstash Redis)
@@ -426,6 +427,34 @@ Columnas afectadas: `organizations.driveRefreshToken`,
 `organizations.onedriveRefreshToken`, `email_accounts.oauthRefreshToken` y
 `email_accounts.oauthAccessToken`. Los valores heredados sin cifrar se siguen
 leyendo (pass-through), de modo que la migración puede ser gradual.
+
+### Aislamiento de datos y Storage
+
+- **Aislamiento multi-tenant**: hoy es **a nivel de aplicación**. `getTenantContext()`
+  resuelve el usuario y su organización, y cada consulta filtra por
+  `organizationId`. La app **no usa RLS** porque Prisma se conecta directo a
+  Postgres (bypassa RLS) y el cliente de Storage/Auth usa `service_role`.
+- **RLS**: **no está habilitado**. Se puede añadir como defensa en profundidad
+  (sobre todo en `storage.objects`) si algún día se expone la API de Supabase al
+  cliente; hoy no es necesario para el funcionamiento.
+- **Storage**: el bucket `invoices` es **privado**. Los archivos se sirven con
+  **URLs firmadas** (5 min) desde `/api/invoices/[id]/file`, que valida sesión y
+  tenant. Las facturas importadas por correo no se guardan en Storage: se leen en
+  vivo del buzón. Ver `lib/invoice-storage.ts`.
+
+Migración de las facturas manuales antiguas (que guardaban la URL pública):
+
+```bash
+npm run migrate:file-paths -- --dry-run   # simulación
+npm run migrate:file-paths                # aplica
+```
+
+Para poner el bucket en privado (**después** de desplegar el código):
+
+```bash
+npm run storage:private -- --dry-run
+npm run storage:private
+```
 
 ## 📝 Próximos Pasos (Post-MVP)
 
