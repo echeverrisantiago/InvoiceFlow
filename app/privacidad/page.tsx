@@ -113,6 +113,10 @@ export default function PrivacidadPage() {
         <li><strong>Microsoft</strong> — acceso a Outlook y almacenamiento en OneDrive, cuando lo autorizas.</li>
         <li><strong>Mercado Pago</strong> — procesamiento de pagos y suscripciones.</li>
         <li><strong>Upstash</strong> — limitación de tasa y protección frente a abusos.</li>
+        <li>
+          <strong>Sentry</strong> — monitoreo de errores de la aplicación (configurado para
+          no identificar al usuario).
+        </li>
         <li><strong>Vercel</strong> — alojamiento e infraestructura de la aplicación.</li>
       </ul>
       <p>
