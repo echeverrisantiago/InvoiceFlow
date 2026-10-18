@@ -456,6 +456,36 @@ npm run storage:private -- --dry-run
 npm run storage:private
 ```
 
+### Monitoreo (Sentry y uptime)
+
+- **Errores (Sentry)**: `@sentry/nextjs`, configurado con `dataCollection.userInfo: false`
+  (no envía identidad del usuario) y desactivado si falta `NEXT_PUBLIC_SENTRY_DSN`.
+  Variables: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT` y
+  `SENTRY_AUTH_TOKEN` (estas dos últimas solo para subir source maps). Los eventos del
+  cliente pasan por el túnel `/sentry-tunnel`.
+- **Uptime**: `GET /api/health` devuelve `{ ok: true }` sin tocar la base de datos. Se
+  monitorea desde un servicio externo (p. ej. UptimeRobot, cada 5 min) apuntando a la app,
+  la landing y `/api/health`.
+
+### Aceptación de Términos y Privacidad (auditoría)
+
+- **Registro inmutable**: cada alta guarda una fila en `terms_acceptances` con versión,
+  **hash del texto exacto aceptado**, fecha, IP, User-Agent y origen (`REGISTER` / `TRIAL`
+  / `REACCEPT`). Se inserta en la **misma transacción** que el alta y nunca se actualiza ni
+  se borra.
+- **Versión vigente y hashes**: `lib/legal.ts`. Al cambiar el texto de
+  `app/terminos/page.tsx` o `app/privacidad/page.tsx` hay que bumpear la versión y correr:
+
+  ```bash
+  npm run legal:hash
+  ```
+
+  El test `__tests__/legal-version.test.ts` falla si el texto cambia y los hashes no se
+  actualizan (obliga a versionar siempre).
+- **Re-aceptación**: si la versión vigente es más nueva que la aceptada por el usuario,
+  aparece un aviso en el dashboard (`components/legal-reaccept-banner.tsx`) para volver a
+  aceptar (`POST /api/legal/accept`).
+
 ## 📝 Próximos Pasos (Post-MVP)
 
 ### ✅ Ya implementado

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { enforceRateLimit, getClientIp, registerIpLimiter } from '@/lib/ratelimit';
+import { buildAcceptanceData, getAcceptanceRequestMeta } from '@/lib/legal-acceptance';
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimit(
@@ -10,7 +11,8 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const { authId, email, name, organizationName } = await request.json();
+    const { authId, email, name, organizationName, acceptedTerms } =
+      await request.json();
 
     // Validate input
     if (!authId || !email || !name || !organizationName) {
@@ -19,6 +21,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (acceptedTerms !== true) {
+      return NextResponse.json(
+        { error: 'Debes aceptar los Términos y la Política de Privacidad' },
+        { status: 400 }
+      );
+    }
+
+    const acceptanceMeta = getAcceptanceRequestMeta(request);
 
     // Create user and organization in a transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -59,6 +70,16 @@ export async function POST(request: NextRequest) {
           currentPeriodStart: new Date(),
           currentPeriodEnd: trialEndDate,
         },
+      });
+
+      // Inmutable: registro de aceptación (mismo éxito/fallo que el alta)
+      await tx.termsAcceptance.create({
+        data: buildAcceptanceData({
+          userId: user.id,
+          source: 'REGISTER',
+          ip: acceptanceMeta.ip,
+          userAgent: acceptanceMeta.userAgent,
+        }),
       });
 
       return { user, organization };

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     'Términos y Condiciones de uso del servicio de gestión de facturas EntraFactura.',
 };
 
-const UPDATED_AT = '14 de octubre de 2026';
+const UPDATED_AT = '18 de octubre de 2026';
 const CONTACT_EMAIL = 'soporte@entrafactura.com';
 
 export default function TerminosPage() {

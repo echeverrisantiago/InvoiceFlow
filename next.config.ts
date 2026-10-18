@@ -30,7 +30,7 @@ export default withSentryConfig(nextConfig, {
   project: process.env.SENTRY_PROJECT,
   // El token solo hace falta para subir source maps; sin él se omiten.
   authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: true,
+  silent: !process.env.CI,
   widenClientFileUpload: true,
   // Ruta propia para evitar bloqueadores de anuncios.
   tunnelRoute: '/sentry-tunnel',

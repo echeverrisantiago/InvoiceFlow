@@ -9,6 +9,7 @@ import {
   getClientIp,
   trialRegisterIpLimiter,
 } from '@/lib/ratelimit';
+import { buildAcceptanceData, getAcceptanceRequestMeta } from '@/lib/legal-acceptance';
 
 const allowedOrigins = [
   'https://landing.entrafactura.com',
@@ -32,6 +33,12 @@ const trialRegisterSchema = z.object({
   email: z.string().email('Correo electrónico inválido'),
   phone: z.string().min(7, 'El teléfono debe tener al menos 7 dígitos'),
   company: z.string().optional(),
+  acceptedTerms: z
+    .boolean()
+    .optional()
+    .refine((value) => value === true, {
+      message: 'Debes aceptar los Términos y la Política de Privacidad',
+    }),
 });
 
 export async function OPTIONS(request: NextRequest) {
@@ -147,6 +154,7 @@ export async function POST(request: NextRequest) {
     trialEndDate.setDate(trialEndDate.getDate() + 30);
 
     const organizationName = company || fullName;
+    const acceptanceMeta = getAcceptanceRequestMeta(request);
 
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -182,6 +190,16 @@ export async function POST(request: NextRequest) {
           currentPeriodStart: trialStartDate,
           currentPeriodEnd: trialEndDate,
         },
+      });
+
+      // Inmutable: registro de aceptación (mismo éxito/fallo que el alta)
+      await tx.termsAcceptance.create({
+        data: buildAcceptanceData({
+          userId: user.id,
+          source: 'TRIAL',
+          ip: acceptanceMeta.ip,
+          userAgent: acceptanceMeta.userAgent,
+        }),
       });
     });
 

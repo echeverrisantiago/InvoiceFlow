@@ -57,6 +57,7 @@ export default function RegisterPage() {
           email,
           name,
           organizationName,
+          acceptedTerms: true,
         }),
       });
 

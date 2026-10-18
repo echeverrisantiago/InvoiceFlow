@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     'Política de Privacidad y Tratamiento de Datos Personales de EntraFactura, conforme a la Ley 1581 de 2012 de Colombia.',
 };
 
-const UPDATED_AT = '14 de octubre de 2026';
+const UPDATED_AT = '18 de octubre de 2026';
 const CONTACT_EMAIL = 'soporte@entrafactura.com';
 
 export default function PrivacidadPage() {

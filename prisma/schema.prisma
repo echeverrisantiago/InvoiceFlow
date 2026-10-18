@@ -77,8 +77,9 @@ model User {
   passwordChangedAt    DateTime?
 
   // Relations
-  memberships      OrganizationMember[]
-  uploadedInvoices Invoice[]           @relation("InvoiceUploadedBy")
+  memberships       OrganizationMember[]
+  uploadedInvoices  Invoice[]            @relation("InvoiceUploadedBy")
+  termsAcceptances  TermsAcceptance[]
 
   @@index([authId])
   @@index([email])
@@ -269,4 +270,26 @@ model AlertLog {
   @@index([type])
   @@index([sentAt])
   @@map("alert_logs")
+}
+
+// Registro inmutable de aceptación de Términos y Política de Privacidad.
+// La app solo inserta filas aquí; nunca las actualiza ni las borra.
+model TermsAcceptance {
+  id             String   @id @default(cuid())
+  termsVersion   String
+  privacyVersion String
+  termsHash      String
+  privacyHash    String
+  source         String // REGISTER | TRIAL | REACCEPT
+  ip             String?
+  userAgent      String?  @db.Text
+  acceptedAt     DateTime @default(now())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([acceptedAt])
+  @@map("terms_acceptances")
 }
