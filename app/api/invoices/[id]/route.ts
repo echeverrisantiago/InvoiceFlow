@@ -88,7 +88,7 @@ export async function PATCH(
       total = round2(itemBase + iva);
     }
 
-    const updatedInvoice = await prisma.invoice.update({
+    await prisma.invoice.update({
       where: { id },
       data: {
         supplier: body.supplier || null,
@@ -103,19 +103,9 @@ export async function PATCH(
         invoiceItems,
         paymentStatus: body.paymentStatus,
       },
-      include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-        emailAccount: true,
-      },
     });
 
-    return NextResponse.json({ success: true, invoice: updatedInvoice });
+    return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Invoice update error:', error);
     return NextResponse.json(

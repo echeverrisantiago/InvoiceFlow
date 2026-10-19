@@ -1,5 +1,8 @@
 import * as Sentry from '@sentry/nextjs';
 
+// Efecto secundario: permite serializar BigInt con JSON.stringify.
+import '@/lib/bigint-serialization';
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('./sentry.server.config');

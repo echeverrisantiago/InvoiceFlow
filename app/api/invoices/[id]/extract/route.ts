@@ -175,7 +175,7 @@ export async function POST(
     }
 
     // Update invoice with extracted data
-    const updatedInvoice = await prisma.invoice.update({
+    await prisma.invoice.update({
       where: { id },
       data: {
         supplier: extraction.data.supplier,
@@ -238,7 +238,6 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      invoice: updatedInvoice,
       extracted: extraction.data,
     });
   } catch (error: any) {
