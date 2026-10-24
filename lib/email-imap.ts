@@ -1,7 +1,6 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
 import {
   EmailAccountConfig,
@@ -15,11 +14,17 @@ import {
   inferMimeType,
 } from '@/lib/email-file';
 import { getInvoiceQuota } from '@/lib/plans';
-import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
-import { decryptToken } from '@/lib/token-crypto';
+import { getGmailProfileEmail } from '@/lib/gmail';
+import { storeInvoiceFromAttachment } from '@/lib/email-processing';
+import { fetchNewGmailEmails, type FetchEmailsResult } from '@/lib/email-gmail';
 
 const MAX_EMAILS_PER_RUN = 50;
 
+/**
+ * Comprueba el acceso a la cuenta según el proveedor:
+ * - Gmail: perfil de la Gmail API (solo lectura).
+ * - Outlook: conexión IMAP.
+ */
 export async function testImapConnection(config: {
   provider?: string;
   email?: string;
@@ -29,6 +34,15 @@ export async function testImapConnection(config: {
     if (!config.accessToken) {
       return { success: false, error: 'No hay token de acceso disponible' };
     }
+
+    if (config.provider === 'GMAIL') {
+      const email = await getGmailProfileEmail(config.accessToken);
+      if (!email) {
+        return { success: false, error: 'No se pudo leer el perfil de Gmail' };
+      }
+      return { success: true };
+    }
+
     const settings = getImapSettings(config.provider || '');
     const imapConfig = {
       host: settings.host,
@@ -54,9 +68,22 @@ export async function testImapConnection(config: {
   }
 }
 
+/**
+ * Importa facturas nuevas de una cuenta de correo.
+ * Gmail va por la Gmail API (solo lectura); Outlook, por IMAP.
+ */
 export async function fetchNewEmails(
   config: EmailAccountConfig
-): Promise<{ success: boolean; processed: number; skipped: number; errors: string[] }> {
+): Promise<FetchEmailsResult> {
+  if (config.provider === 'GMAIL') {
+    return fetchNewGmailEmails(config);
+  }
+  return fetchNewImapEmails(config);
+}
+
+async function fetchNewImapEmails(
+  config: EmailAccountConfig
+): Promise<FetchEmailsResult> {
   const errors: string[] = [];
   let processed = 0;
   let skipped = 0;
@@ -104,9 +131,9 @@ export async function fetchNewEmails(
       accessToken,
     },
     secure: settings.tls,
-      logger: false as const,
-      connectionTimeout: IMAP_CONNECT_TIMEOUT,
-      socketTimeout: IMAP_SOCKET_TIMEOUT,
+    logger: false as const,
+    connectionTimeout: IMAP_CONNECT_TIMEOUT,
+    socketTimeout: IMAP_SOCKET_TIMEOUT,
   };
 
   const client = new ImapFlow(imapConfig);
@@ -197,103 +224,22 @@ export async function fetchNewEmails(
               const buffer = attachment.content;
               const mimeType = attachment.contentType || inferMimeType(fileName);
 
-              const { extractInvoiceData } = await import('@/lib/ia');
-              const extraction = await withTimeout(
-                extractInvoiceData(buffer, mimeType, fileName),
-                120_000,
-                'extractInvoiceData'
-              );
+              const outcome = await storeInvoiceFromAttachment({
+                config,
+                organizationNit,
+                buffer,
+                mimeType,
+                fileName,
+                messageUid: message.uid != null ? BigInt(message.uid) : null,
+                messageId: null,
+              });
 
-              // Skip invoices the organization emitted itself (only for DIAN XML).
-              if (
-                extraction.success &&
-                extraction.data &&
-                extraction.source === 'XML' &&
-                isInvoiceIssuedByOrganization(extraction.data, organizationNit)
-              ) {
+              if (outcome === 'skipped') {
                 skipped++;
-                continue;
+              } else if (outcome === 'processed') {
+                processed++;
+                remainingQuota--;
               }
-
-              const invoiceId = nanoid();
-              let invoice;
-              try {
-                invoice = await prisma.invoice.create({
-                  data: {
-                    id: invoiceId,
-                    organizationId: config.organizationId,
-                    fileName,
-                    fileUrl: `/api/invoices/${invoiceId}/file`,
-                    fileSize: buffer.length,
-                    source: 'EMAIL',
-                    status: 'PROCESSING',
-                    paymentStatus: 'PENDING',
-                    emailAccountId: config.id,
-                    messageUid: message.uid != null ? BigInt(message.uid) : null,
-                    attachmentFilename: fileName,
-                  },
-                });
-              } catch (createError) {
-                if (
-                  createError instanceof Prisma.PrismaClientKnownRequestError &&
-                  createError.code === 'P2002'
-                ) {
-                  continue;
-                }
-                throw createError;
-              }
-
-              if (extraction.success && extraction.data) {
-                await prisma.invoice.update({
-                  where: { id: invoice.id },
-                  data: {
-                    supplier: extraction.data.supplier,
-                    supplierNit: extraction.data.supplierNit,
-                    issueDate: new Date(extraction.data.issueDate),
-                    dueDate: new Date(extraction.data.dueDate),
-                    subtotal: extraction.data.subtotal,
-                    iva: extraction.data.iva,
-                    total: extraction.data.total,
-                    description: extraction.data.description,
-                    invoiceItems: extraction.data.items as unknown as Prisma.InputJsonValue,
-                    extractedData: extraction.rawResponse,
-                    status: 'EXTRACTED',
-                    paymentStatus:
-                      new Date(extraction.data.dueDate) <
-                      new Date(new Date().setHours(0, 0, 0, 0))
-                        ? 'OVERDUE'
-                        : 'PENDING',
-                  },
-                });
-
-                const org = await prisma.organization.findUnique({
-                  where: { id: config.organizationId },
-                  select: {
-                    driveRefreshToken: true,
-                    onedriveRefreshToken: true,
-                  },
-                });
-
-                const driveRefreshToken = decryptToken(org?.driveRefreshToken);
-                const onedriveRefreshToken = decryptToken(org?.onedriveRefreshToken);
-
-                if (config.provider === 'GMAIL' && driveRefreshToken) {
-                  await backupToDrive({ buffer, mimeType, fileName, refreshToken: driveRefreshToken, invoiceId: invoice.id });
-                } else if (config.provider === 'OUTLOOK' && onedriveRefreshToken) {
-                  await backupToOneDrive({ buffer, contentType: mimeType, fileName, refreshToken: onedriveRefreshToken, invoiceId: invoice.id });
-                }
-              } else {
-                await prisma.invoice.update({
-                  where: { id: invoice.id },
-                  data: {
-                    status: 'FAILED',
-                    extractedData: extraction.rawResponse,
-                  },
-                });
-              }
-
-              processed++;
-              remainingQuota--;
             } catch (attError: unknown) {
               const msg = attError instanceof Error ? attError.message : 'Error desconocido';
               errors.push(
@@ -351,39 +297,5 @@ export async function fetchNewEmails(
       skipped,
       errors: [msg],
     };
-  }
-}
-
-async function backupToDrive({ buffer, mimeType, fileName, refreshToken, invoiceId }: { buffer: Buffer; mimeType: string; fileName: string; refreshToken: string; invoiceId: string }) {
-  try {
-    const { uploadToDrive } = await import('@/lib/drive');
-    const driveFileId = await withTimeout(
-      uploadToDrive({ fileName, refreshToken, buffer, contentType: mimeType }),
-      60_000,
-      'uploadToDrive'
-    );
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: { driveFileId, status: 'BACKED_UP' },
-    });
-  } catch (driveError) {
-    console.error('Google Drive upload error:', driveError);
-  }
-}
-
-async function backupToOneDrive({ buffer, contentType, fileName, refreshToken, invoiceId }: { buffer: Buffer; contentType: string; fileName: string; refreshToken: string; invoiceId: string }) {
-  try {
-    const { uploadToOneDrive } = await import('@/lib/onedrive');
-    const onedriveFileId = await withTimeout(
-      uploadToOneDrive({ buffer, contentType, fileName, refreshToken }),
-      60_000,
-      'uploadToOneDrive'
-    );
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: { driveFileId: onedriveFileId, status: 'BACKED_UP' },
-    });
-  } catch (onedriveError) {
-    console.error('OneDrive upload error:', onedriveError);
   }
 }

@@ -148,7 +148,10 @@ model Invoice {
 
   // Email source (preview fetched live from the inbox when set)
   emailAccountId     String?
+  // IMAP UID — used by Outlook (and legacy Gmail/IMAP invoices).
   messageUid         BigInt?
+  // Gmail API message id — used by Gmail accounts (scope gmail.readonly).
+  messageId          String?
   attachmentFilename String?
 
   // Google Drive backup
@@ -182,6 +185,7 @@ model Invoice {
   @@index([paymentStatus])
   @@index([supplier])
   @@unique([emailAccountId, messageUid, attachmentFilename])
+  @@unique([emailAccountId, messageId, attachmentFilename])
   @@map("invoices")
 }
 
@@ -203,7 +207,10 @@ model EmailAccount {
 
   isActive       Boolean        @default(true)
   lastCheckedAt  DateTime?
+  // IMAP UID of the last processed message (Outlook).
   lastEmailUid   BigInt?
+  // Gmail: internalDate of the last processed message (sync cursor).
+  lastEmailDate  DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

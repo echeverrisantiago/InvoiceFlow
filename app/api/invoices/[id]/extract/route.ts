@@ -106,10 +106,15 @@ export async function POST(
     // - Manual uploads live in the private `invoices` bucket (downloaded via Storage API).
     let invoiceFile: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
 
-    if (invoice.source === 'EMAIL' && invoice.emailAccountId && invoice.messageUid) {
+    if (
+      invoice.source === 'EMAIL' &&
+      invoice.emailAccountId &&
+      (invoice.messageUid || invoice.messageId)
+    ) {
       invoiceFile = await getInvoiceFileFromEmail({
         emailAccountId: invoice.emailAccountId,
         messageUid: invoice.messageUid,
+        messageId: invoice.messageId,
         attachmentFilename: invoice.attachmentFilename,
       });
     } else {

@@ -47,7 +47,11 @@ export async function GET(
   }
 
   // Manual uploads are stored in the (private) `invoices` bucket.
-  if (invoice.source !== 'EMAIL' || !invoice.emailAccountId || !invoice.messageUid) {
+  if (
+    invoice.source !== 'EMAIL' ||
+    !invoice.emailAccountId ||
+    (!invoice.messageUid && !invoice.messageId)
+  ) {
     const storagePath = resolveInvoiceStoragePath(invoice);
     if (!storagePath) {
       return NextResponse.json(
@@ -94,6 +98,7 @@ export async function GET(
     const file = await getInvoiceFileFromEmail({
       emailAccountId: invoice.emailAccountId,
       messageUid: invoice.messageUid,
+      messageId: invoice.messageId,
       attachmentFilename: invoice.attachmentFilename,
     });
 

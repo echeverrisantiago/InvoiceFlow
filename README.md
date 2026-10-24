@@ -398,6 +398,38 @@ interno de 2/hora deja de aplicar; solo actívalo si quieres un tope explícito.
 > El campo "token refreshes" cubre el endpoint `/auth/v1/token`, que incluye el
 > login con contraseña; es la **única** protección de fuerza bruta del login.
 
+### Sincronización de correo (Gmail / Outlook)
+
+| Proveedor | Acceso | Scope | Permiso que ve el usuario |
+|---|---|---|---|
+| Gmail | Gmail API (REST) | `gmail.readonly` | "Ver tus mensajes y configuraciones de correo" |
+| Outlook | IMAP | `IMAP.AccessAsUser.All` | Leer el correo |
+
+Gmail **no usa IMAP a propósito**: Google solo autoriza IMAP/SMTP con el scope
+completo `https://mail.google.com/`, que además permite **redactar, enviar y
+eliminar permanentemente** correo. Con `gmail.readonly` la app únicamente puede
+leer mensajes y adjuntos.
+
+> `gmail.readonly` sigue siendo un *scope restringido*: para publicar la app y
+> salir del límite de 100 usuarios, Google exige verificación + **CASA**
+> (auditoría anual de seguridad de terceros).
+
+Implementación:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `lib/gmail.ts` | Cliente de la Gmail API (listar mensajes y descargar adjuntos) |
+| `lib/gmail-payload.ts` | Recorrido del árbol MIME (puro, testeado) |
+| `lib/email-gmail.ts` | Importación de facturas nuevas de Gmail |
+| `lib/email-imap.ts` | Importación de Outlook (IMAP) |
+| `lib/email-processing.ts` | Procesamiento del adjunto (IA, factura, respaldo) |
+| `lib/email-file.ts` | Cursor, tokens y obtención del archivo original |
+
+El cursor de sincronización de Gmail es `email_accounts.lastEmailDate`
+(`internalDate` del último correo procesado); el de Outlook sigue siendo
+`lastEmailUid` (UID IMAP). Las facturas guardan `messageId` (Gmail) o
+`messageUid` (Outlook) para poder recuperar el adjunto original.
+
 ### Cifrado de tokens OAuth
 
 Los refresh/access tokens de Google Drive, OneDrive, Gmail y Outlook se guardan

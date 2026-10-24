@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { isXmlFileName, isZipFileName, looksLikeDianInvoiceXml } from '@/lib/file-types';
+import { getGmailMessage } from '@/lib/gmail';
 
 export const IMAP_CONNECT_TIMEOUT = 30_000;
 export const IMAP_SOCKET_TIMEOUT = 60_000;
@@ -17,7 +18,10 @@ export interface EmailAccountConfig {
   provider: string;
   isActive: boolean;
   lastCheckedAt: Date | null;
+  /** Outlook (IMAP): UID del último mensaje procesado. */
   lastEmailUid: bigint | null;
+  /** Gmail: `internalDate` del último mensaje procesado. */
+  lastEmailDate: Date | null;
   createdAt: Date;
   oauthRefreshToken: string | null;
   oauthAccessToken: string | null;
@@ -199,6 +203,21 @@ export function inferMimeType(fileName: string): string {
   return 'image/jpeg';
 }
 
+/**
+ * Elige el adjunto a previsualizar: primero el que coincide con el nombre
+ * guardado en la factura y, si no, el primer adjunto que parezca factura.
+ */
+export function pickInvoiceAttachment<T extends { contentType?: string; filename?: string; content?: Buffer }>(
+  attachments: T[],
+  attachmentFilename: string | null
+): T | null {
+  if (attachmentFilename) {
+    const match = attachments.find((att) => att.filename === attachmentFilename);
+    if (match) return match;
+  }
+  return attachments.find((att) => isInvoiceAttachment(att)) || null;
+}
+
 export interface InvoiceFileFromEmail {
   buffer: Buffer;
   mimeType: string;
@@ -208,13 +227,17 @@ export interface InvoiceFileFromEmail {
 export async function getInvoiceFileFromEmail({
   emailAccountId,
   messageUid,
+  messageId,
   attachmentFilename,
 }: {
   emailAccountId: string | null;
+  /** Outlook (IMAP) y facturas antiguas importadas por IMAP. */
   messageUid: bigint | number | null;
+  /** Gmail API. */
+  messageId: string | null;
   attachmentFilename: string | null;
 }): Promise<InvoiceFileFromEmail | null> {
-  if (!emailAccountId || !messageUid) return null;
+  if (!emailAccountId || (!messageUid && !messageId)) return null;
 
   const emailAccount = await prisma.emailAccount.findUnique({
     where: { id: emailAccountId },
@@ -229,6 +252,7 @@ export async function getInvoiceFileFromEmail({
     isActive: emailAccount.isActive,
     lastCheckedAt: emailAccount.lastCheckedAt,
     lastEmailUid: emailAccount.lastEmailUid,
+    lastEmailDate: emailAccount.lastEmailDate,
     createdAt: emailAccount.createdAt,
     oauthRefreshToken: emailAccount.oauthRefreshToken,
     oauthAccessToken: emailAccount.oauthAccessToken,
@@ -239,13 +263,74 @@ export async function getInvoiceFileFromEmail({
   const tokenResult = await getAccessTokenForOAuth(config);
   if (!tokenResult.accessToken) return null;
 
+  if (config.provider === 'GMAIL') {
+    return getInvoiceFileFromGmail({
+      accessToken: tokenResult.accessToken,
+      messageId,
+      attachmentFilename,
+    });
+  }
+
+  return getInvoiceFileFromImap({
+    config,
+    accessToken: tokenResult.accessToken,
+    messageUid,
+    attachmentFilename,
+  });
+}
+
+/** Adjunto de una cuenta de Gmail, vía Gmail API (solo lectura). */
+async function getInvoiceFileFromGmail({
+  accessToken,
+  messageId,
+  attachmentFilename,
+}: {
+  accessToken: string;
+  messageId: string | null;
+  attachmentFilename: string | null;
+}): Promise<InvoiceFileFromEmail | null> {
+  if (!messageId) return null;
+
+  const message = await withTimeout(
+    getGmailMessage({ accessToken, messageId }),
+    60_000,
+    `Gmail get ${messageId}`
+  );
+  if (!message) return null;
+
+  const attachment = pickInvoiceAttachment(message.attachments, attachmentFilename);
+  if (!attachment) return null;
+
+  const fileName = attachment.filename || attachmentFilename || `invoice-${nanoid()}.pdf`;
+
+  return {
+    buffer: attachment.content,
+    mimeType: attachment.contentType || inferMimeType(fileName),
+    fileName,
+  };
+}
+
+/** Adjunto de una cuenta de Outlook, vía IMAP. */
+async function getInvoiceFileFromImap({
+  config,
+  accessToken,
+  messageUid,
+  attachmentFilename,
+}: {
+  config: EmailAccountConfig;
+  accessToken: string;
+  messageUid: bigint | number | null;
+  attachmentFilename: string | null;
+}): Promise<InvoiceFileFromEmail | null> {
+  if (!messageUid) return null;
+
   const settings = getImapSettings(config.provider);
   const client = new ImapFlow({
     host: settings.host,
     port: settings.port,
     auth: {
       user: config.email,
-      accessToken: tokenResult.accessToken,
+      accessToken,
     },
     secure: settings.tls,
     logger: false as const,
@@ -283,15 +368,8 @@ export async function getInvoiceFileFromEmail({
       const parsed: any = await withTimeout(simpleParser(fetchResult.source as any), 30_000, 'simpleParser');
       const attachments = parsed.attachments || [];
 
-      let attachment: any = null;
-      if (attachmentFilename) {
-        attachment =
-          attachments.find((att: any) => att.filename === attachmentFilename) || null;
-      }
-      if (!attachment) {
-        attachment = attachments.find((att: any) => isInvoiceAttachment(att)) || null;
-      }
-      if (!attachment) return null;
+      const attachment = pickInvoiceAttachment(attachments, attachmentFilename);
+      if (!attachment || !attachment.content) return null;
 
       const fileName = attachment.filename || attachmentFilename || `invoice-${nanoid()}.pdf`;
       const mimeType = attachment.contentType || inferMimeType(fileName);

@@ -1,7 +1,10 @@
 import { google } from 'googleapis';
 
+// Solo lectura: permite leer mensajes y adjuntos vía la Gmail API.
+// (IMAP/SMTP requerirían `https://mail.google.com/`, que además da permiso
+// para enviar y borrar correo.)
 const GMAIL_SCOPES = [
-  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/gmail.readonly',
   'openid',
   'email',
 ];
