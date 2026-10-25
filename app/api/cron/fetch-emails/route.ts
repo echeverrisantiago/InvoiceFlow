@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchNewEmails } from '@/lib/email-sync';
+import { isSubscriptionActive } from '@/lib/subscription-status';
 
 export const maxDuration = 240;
 
@@ -40,15 +41,9 @@ export async function GET(request: NextRequest) {
     );
 
     const now = new Date();
-    const activeAccounts = accounts.filter((account) => {
-      const sub = account.organization.subscription;
-      if (!sub) return false;
-      if (sub.status === 'ACTIVE') return true;
-      if (sub.status === 'TRIALING') {
-        return !!sub.currentPeriodEnd && sub.currentPeriodEnd > now;
-      }
-      return false;
-    });
+    const activeAccounts = accounts.filter((account) =>
+      isSubscriptionActive(account.organization.subscription, now)
+    );
 
     const results = [];
     const startTime = Date.now();

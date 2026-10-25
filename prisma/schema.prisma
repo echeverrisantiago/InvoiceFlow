@@ -224,6 +224,9 @@ model Subscription {
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean  @default(false)
 
+  // Dunning: fecha del primer cobro fallido del episodio actual (null si al día)
+  paymentFailedAt DateTime?
+
   // Relations
   organizationId String       @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

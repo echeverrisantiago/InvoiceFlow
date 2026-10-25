@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { cache } from 'react';
+import { graceEndsAt, isSubscriptionActive } from '@/lib/subscription-status';
 
 export interface TenantSubscription {
   status: string;
@@ -10,6 +11,9 @@ export interface TenantSubscription {
   currentPeriodEnd: Date | null;
   isActive: boolean;
   isTrial: boolean;
+  isPastDue: boolean;
+  graceEndsAt: Date | null;
+  paymentFailedAt: Date | null;
   requiresRenewal: boolean;
 }
 
@@ -78,11 +82,9 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
 
   const now = new Date();
   const isTrial = subscription?.status === 'TRIALING';
-  const periodValid =
-    !!subscription?.currentPeriodEnd && subscription.currentPeriodEnd > now;
-  const isActive =
-    subscription?.status === 'ACTIVE' ||
-    ((isTrial || subscription?.status === 'CANCELED') && periodValid);
+  const isPastDue = subscription?.status === 'PAST_DUE';
+  const isActive = isSubscriptionActive(subscription, now);
+  const graceEnd = isPastDue ? graceEndsAt(subscription?.currentPeriodEnd) : null;
 
   return {
     user: {
@@ -104,6 +106,9 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
       currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
       isActive,
       isTrial,
+      isPastDue,
+      graceEndsAt: graceEnd,
+      paymentFailedAt: subscription?.paymentFailedAt ?? null,
       requiresRenewal: !isActive,
     },
   };

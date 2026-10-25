@@ -6,6 +6,7 @@ import {
   getSubscriptionInvoice,
   verifyWebhookSignature,
 } from '@/lib/mercadopago';
+import { notifyPaymentFailed } from '@/lib/subscription-notifications';
 import {
   BillingInterval,
   PlanKey,
@@ -23,6 +24,14 @@ function addMonths(date: Date, months: number): Date {
 function intervalFromFrequency(frequency?: number): BillingInterval {
   return frequency && frequency >= 12 ? 'YEARLY' : 'MONTHLY';
 }
+
+/** Estados de pago de Mercado Pago que consideramos un cobro fallido. */
+const FAILED_PAYMENT_STATUSES = new Set([
+  'rejected',
+  'cancelled',
+  'refunded',
+  'charged_back',
+]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -84,6 +93,8 @@ export async function POST(request: NextRequest) {
       );
 
       const now = new Date();
+      const wasPastDue = subscription?.status === 'PAST_DUE';
+      const startsFailing = mappedStatus === 'PAST_DUE' && !wasPastDue;
 
       await prisma.subscription.update({
         where: { organizationId },
@@ -94,14 +105,24 @@ export async function POST(request: NextRequest) {
             ? String(preapproval.payer_id)
             : undefined,
           ...(mappedStatus ? { status: mappedStatus } : {}),
+          ...(startsFailing ? { paymentFailedAt: now } : {}),
           ...(mappedStatus === 'ACTIVE'
             ? {
                 currentPeriodStart: now,
                 currentPeriodEnd: addMonths(now, getIntervalMonths(interval)),
+                paymentFailedAt: null,
               }
             : {}),
         },
       });
+
+      if (startsFailing) {
+        await notifyPaymentFailed({
+          organizationId,
+          currentPeriodEnd: subscription?.currentPeriodEnd ?? now,
+          reason: `preapproval_${preapproval.status}`,
+        });
+      }
 
       console.log(
         `Preapproval ${preapproval.status} for org ${organizationId}`
@@ -126,7 +147,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true });
       }
 
-      if (invoice.payment?.status === 'approved') {
+      const paymentStatus = invoice.payment?.status;
+
+      if (paymentStatus === 'approved') {
         const baseDate = invoice.debit_date
           ? new Date(invoice.debit_date)
           : new Date();
@@ -140,10 +163,36 @@ export async function POST(request: NextRequest) {
             status: 'ACTIVE',
             currentPeriodStart: baseDate,
             currentPeriodEnd: addMonths(baseDate, months),
+            paymentFailedAt: null,
           },
         });
 
         console.log(`Subscription payment approved for org ${subscription.organizationId}`);
+      } else if (
+        paymentStatus &&
+        FAILED_PAYMENT_STATUSES.has(paymentStatus)
+      ) {
+        const wasPastDue = subscription.status === 'PAST_DUE';
+
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'PAST_DUE',
+            ...(wasPastDue ? {} : { paymentFailedAt: new Date() }),
+          },
+        });
+
+        if (!wasPastDue) {
+          await notifyPaymentFailed({
+            organizationId: subscription.organizationId,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+            reason: paymentStatus,
+          });
+        }
+
+        console.log(
+          `Subscription payment ${paymentStatus} for org ${subscription.organizationId}`
+        );
       }
     }
 

@@ -325,6 +325,22 @@ Todos los planes incluyen extracción con IA, almacenamiento seguro en la nube, 
 - El límite de facturas se cuenta por **mes calendario** (se reinicia el día 1) y aplica a facturas manuales y por correo.
 - El usuario puede cambiar de plan/periodicidad o cancelar en cualquier momento; al cancelar conserva el acceso hasta el final del período pagado.
 
+### Pagos fallidos (dunning)
+
+Si un cobro recurrente es rechazado:
+
+1. La suscripción pasa a `PAST_DUE` y se guarda `subscriptions.paymentFailedAt`.
+2. Se avisa por email a los administradores con la fecha límite.
+3. **El acceso se mantiene 5 días** (`PAYMENT_GRACE_DAYS` en `lib/subscription-status.ts`) contados desde el final del período ya pagado.
+4. Si se cobra correctamente, vuelve a `ACTIVE` y se limpia `paymentFailedAt`.
+5. Pasada la gracia, el usuario es redirigido a facturación (`requiresRenewal`).
+
+Durante la gracia el cron de correo sigue sincronizando. El aviso en el dashboard está en `components/payment-failed-banner.tsx`.
+
+### Recordatorio de fin de prueba
+
+El antiguo banner permanente se sustituyó por un modal (`components/trial-ending-modal.tsx`) que aparece **como máximo una vez al día** durante los últimos **5 días** del trial, con un botón directo a los planes.
+
 ### Webhooks de Mercado Pago
 
 En "Tus integraciones → Webhooks" activa los topics `subscription_preapproval` y `subscription_authorized_payment`, apunta la URL a `https://<tu-dominio>/api/subscriptions/webhook` y copia el **secret** en `MERCADOPAGO_WEBHOOK_SECRET`.

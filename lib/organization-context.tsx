@@ -17,6 +17,9 @@ export interface SubscriptionInfo {
   currentPeriodEnd: string | null;
   isActive: boolean;
   isTrial: boolean;
+  isPastDue: boolean;
+  graceEndsAt: string | null;
+  paymentFailedAt: string | null;
   requiresRenewal: boolean;
 }
 
