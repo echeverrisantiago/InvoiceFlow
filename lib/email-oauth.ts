@@ -81,7 +81,8 @@ export function getOutlookAuthUrl(): string {
     response_type: 'code',
     redirect_uri: process.env.OUTLOOK_REDIRECT_URI || '',
     response_mode: 'query',
-    scope: 'openid profile email offline_access https://outlook.office.com/IMAP.AccessAsUser.All',
+    scope:
+      'openid profile email offline_access https://graph.microsoft.com/Mail.Read',
     state: 'outlook',
   });
   return `${OUTLOOK_AUTHORITY}/oauth2/v2.0/authorize?${params.toString()}`;
@@ -126,7 +127,7 @@ export async function refreshOutlookAccessToken(
     client_secret: process.env.OUTLOOK_CLIENT_SECRET || '',
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
-    scope: 'offline_access https://outlook.office.com/IMAP.AccessAsUser.All',
+    scope: 'offline_access https://graph.microsoft.com/Mail.Read',
   });
 
   try {
@@ -150,7 +151,7 @@ export async function refreshOutlookAccessToken(
         code === 'invalid_client' ||
         code === 'unauthorized_client' ||
         /invalid_grant/i.test(errText) ||
-        /AADSTS70000|AADSTS50173|AADSTS70008|AADSTS50020/.test(errText);
+        /AADSTS65001|AADSTS70000|AADSTS50173|AADSTS70008|AADSTS50020/.test(errText);
       return {
         accessToken: null,
         expiryDate: null,

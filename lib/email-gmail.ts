@@ -9,15 +9,9 @@ import {
 } from '@/lib/email-file';
 import { listGmailMessageIds, getGmailMessage } from '@/lib/gmail';
 import { storeInvoiceFromAttachment } from '@/lib/email-processing';
+import type { FetchEmailsResult } from '@/lib/email-sync';
 
 const MAX_EMAILS_PER_RUN = 50;
-
-export interface FetchEmailsResult {
-  success: boolean;
-  processed: number;
-  skipped: number;
-  errors: string[];
-}
 
 /**
  * Importa facturas nuevas de una cuenta de Gmail usando la Gmail API
@@ -120,7 +114,6 @@ export async function fetchNewGmailEmails(
               buffer: attachment.content,
               mimeType,
               fileName,
-              messageUid: null,
               messageId,
             });
 

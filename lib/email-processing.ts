@@ -9,7 +9,7 @@ export type AttachmentOutcome = 'processed' | 'skipped' | 'duplicate';
 /**
  * Procesa un adjunto de correo: extrae los datos con IA y crea la factura.
  *
- * Compartido por la lectura de Gmail (Gmail API) y de Outlook (IMAP).
+ * Compartido por la lectura de Gmail (Gmail API) y de Outlook (Microsoft Graph).
  */
 export async function storeInvoiceFromAttachment({
   config,
@@ -17,7 +17,6 @@ export async function storeInvoiceFromAttachment({
   buffer,
   mimeType,
   fileName,
-  messageUid,
   messageId,
 }: {
   config: EmailAccountConfig;
@@ -25,10 +24,8 @@ export async function storeInvoiceFromAttachment({
   buffer: Buffer;
   mimeType: string;
   fileName: string;
-  /** IMAP UID (Outlook y facturas antiguas de Gmail). */
-  messageUid: bigint | null;
-  /** Id de mensaje de la Gmail API. */
-  messageId: string | null;
+  /** Id del mensaje en la API del proveedor (Gmail o Microsoft Graph). */
+  messageId: string;
 }): Promise<AttachmentOutcome> {
   const { extractInvoiceData } = await import('@/lib/ia');
   const extraction = await withTimeout(
@@ -61,7 +58,6 @@ export async function storeInvoiceFromAttachment({
         status: 'PROCESSING',
         paymentStatus: 'PENDING',
         emailAccountId: config.id,
-        messageUid,
         messageId,
         attachmentFilename: fileName,
       },

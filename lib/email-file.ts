@@ -1,33 +1,10 @@
-import { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { isXmlFileName, isZipFileName, looksLikeDianInvoiceXml } from '@/lib/file-types';
 import { getGmailMessage } from '@/lib/gmail';
-
-export const IMAP_CONNECT_TIMEOUT = 30_000;
-export const IMAP_SOCKET_TIMEOUT = 60_000;
-export const MAILBOX_LOCK_TIMEOUT = 30_000;
-
-export interface EmailAccountConfig {
-  id: string;
-  organizationId: string;
-  email: string;
-  provider: string;
-  isActive: boolean;
-  lastCheckedAt: Date | null;
-  /** Outlook (IMAP): UID del último mensaje procesado. */
-  lastEmailUid: bigint | null;
-  /** Gmail: `internalDate` del último mensaje procesado. */
-  lastEmailDate: Date | null;
-  createdAt: Date;
-  oauthRefreshToken: string | null;
-  oauthAccessToken: string | null;
-  oauthTokenExpiry: Date | null;
-  needsReconnect: boolean;
-}
+import { getGraphMessage } from '@/lib/graph';
 
 export async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -46,14 +23,20 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
   }
 }
 
-export function getImapSettings(provider: string): { host: string; port: number; tls: boolean } {
-  if (provider === 'GMAIL') {
-    return { host: 'imap.gmail.com', port: 993, tls: true };
-  }
-  if (provider === 'OUTLOOK') {
-    return { host: 'outlook.office365.com', port: 993, tls: true };
-  }
-  return { host: '', port: 0, tls: false };
+export interface EmailAccountConfig {
+  id: string;
+  organizationId: string;
+  email: string;
+  provider: string;
+  isActive: boolean;
+  lastCheckedAt: Date | null;
+  /** Fecha del último mensaje procesado (cursor de sincronización). */
+  lastEmailDate: Date | null;
+  createdAt: Date;
+  oauthRefreshToken: string | null;
+  oauthAccessToken: string | null;
+  oauthTokenExpiry: Date | null;
+  needsReconnect: boolean;
 }
 
 export interface AccessTokenResult {
@@ -68,7 +51,7 @@ export interface AccessTokenResult {
  * Marks the account as needing reconnection and, the first time it happens,
  * notifies the organization admins by email.
  */
-async function flagNeedsReconnect(
+export async function flagNeedsReconnect(
   config: EmailAccountConfig,
   error: string
 ): Promise<boolean> {
@@ -224,20 +207,21 @@ export interface InvoiceFileFromEmail {
   fileName: string;
 }
 
+/**
+ * Recupera el adjunto original desde el proveedor:
+ * Gmail (Gmail API) u Outlook (Microsoft Graph).
+ */
 export async function getInvoiceFileFromEmail({
   emailAccountId,
-  messageUid,
   messageId,
   attachmentFilename,
 }: {
   emailAccountId: string | null;
-  /** Outlook (IMAP) y facturas antiguas importadas por IMAP. */
-  messageUid: bigint | number | null;
-  /** Gmail API. */
+  /** Id del mensaje en la API del proveedor. */
   messageId: string | null;
   attachmentFilename: string | null;
 }): Promise<InvoiceFileFromEmail | null> {
-  if (!emailAccountId || (!messageUid && !messageId)) return null;
+  if (!emailAccountId || !messageId) return null;
 
   const emailAccount = await prisma.emailAccount.findUnique({
     where: { id: emailAccountId },
@@ -251,7 +235,6 @@ export async function getInvoiceFileFromEmail({
     provider: emailAccount.provider,
     isActive: emailAccount.isActive,
     lastCheckedAt: emailAccount.lastCheckedAt,
-    lastEmailUid: emailAccount.lastEmailUid,
     lastEmailDate: emailAccount.lastEmailDate,
     createdAt: emailAccount.createdAt,
     oauthRefreshToken: emailAccount.oauthRefreshToken,
@@ -263,39 +246,23 @@ export async function getInvoiceFileFromEmail({
   const tokenResult = await getAccessTokenForOAuth(config);
   if (!tokenResult.accessToken) return null;
 
-  if (config.provider === 'GMAIL') {
-    return getInvoiceFileFromGmail({
-      accessToken: tokenResult.accessToken,
-      messageId,
-      attachmentFilename,
-    });
-  }
+  const accessToken = tokenResult.accessToken;
 
-  return getInvoiceFileFromImap({
-    config,
-    accessToken: tokenResult.accessToken,
-    messageUid,
-    attachmentFilename,
-  });
-}
+  const message =
+    config.provider === 'GMAIL'
+      ? await withTimeout(
+          getGmailMessage({ accessToken, messageId }),
+          60_000,
+          `Gmail get ${messageId}`
+        )
+      : config.provider === 'OUTLOOK'
+        ? await withTimeout(
+            getGraphMessage({ accessToken, messageId }),
+            60_000,
+            `Graph get ${messageId}`
+          )
+        : null;
 
-/** Adjunto de una cuenta de Gmail, vía Gmail API (solo lectura). */
-async function getInvoiceFileFromGmail({
-  accessToken,
-  messageId,
-  attachmentFilename,
-}: {
-  accessToken: string;
-  messageId: string | null;
-  attachmentFilename: string | null;
-}): Promise<InvoiceFileFromEmail | null> {
-  if (!messageId) return null;
-
-  const message = await withTimeout(
-    getGmailMessage({ accessToken, messageId }),
-    60_000,
-    `Gmail get ${messageId}`
-  );
   if (!message) return null;
 
   const attachment = pickInvoiceAttachment(message.attachments, attachmentFilename);
@@ -308,81 +275,4 @@ async function getInvoiceFileFromGmail({
     mimeType: attachment.contentType || inferMimeType(fileName),
     fileName,
   };
-}
-
-/** Adjunto de una cuenta de Outlook, vía IMAP. */
-async function getInvoiceFileFromImap({
-  config,
-  accessToken,
-  messageUid,
-  attachmentFilename,
-}: {
-  config: EmailAccountConfig;
-  accessToken: string;
-  messageUid: bigint | number | null;
-  attachmentFilename: string | null;
-}): Promise<InvoiceFileFromEmail | null> {
-  if (!messageUid) return null;
-
-  const settings = getImapSettings(config.provider);
-  const client = new ImapFlow({
-    host: settings.host,
-    port: settings.port,
-    auth: {
-      user: config.email,
-      accessToken,
-    },
-    secure: settings.tls,
-    logger: false as const,
-    connectionTimeout: IMAP_CONNECT_TIMEOUT,
-    socketTimeout: IMAP_SOCKET_TIMEOUT,
-  });
-
-  try {
-    await withTimeout(client.connect(), IMAP_CONNECT_TIMEOUT, 'conexión IMAP preview');
-    const lock = await withTimeout(client.getMailboxLock('INBOX'), MAILBOX_LOCK_TIMEOUT, 'getMailboxLock INBOX');
-
-    try {
-      let fetchResult: Awaited<ReturnType<typeof client.fetchOne>>;
-      try {
-        fetchResult = await withTimeout(
-          client.fetchOne(Number(messageUid), { source: true }, { uid: true }),
-          60_000,
-          `fetchOne UID ${messageUid}`
-        );
-      } catch (fetchError: unknown) {
-        const status = (fetchError as { responseStatus?: string })?.responseStatus;
-        const responseText = (fetchError as { responseText?: string })?.responseText;
-        const executed = (fetchError as { executedCommand?: string })?.executedCommand;
-        const enriched = new Error(
-          `Error fetchOne UID ${messageUid}: ${fetchError instanceof Error ? fetchError.message : 'desconocido'}` +
-            (status ? ` [${status}]` : '') +
-            (responseText ? ` - "${responseText}"` : '') +
-            (executed ? ` | cmd: ${executed}` : '')
-        );
-        throw enriched;
-      }
-
-      if (!fetchResult) return null;
-
-      const parsed: any = await withTimeout(simpleParser(fetchResult.source as any), 30_000, 'simpleParser');
-      const attachments = parsed.attachments || [];
-
-      const attachment = pickInvoiceAttachment(attachments, attachmentFilename);
-      if (!attachment || !attachment.content) return null;
-
-      const fileName = attachment.filename || attachmentFilename || `invoice-${nanoid()}.pdf`;
-      const mimeType = attachment.contentType || inferMimeType(fileName);
-
-      return {
-        buffer: attachment.content,
-        mimeType,
-        fileName,
-      };
-    } finally {
-      lock.release();
-    }
-  } finally {
-    await client.logout().catch(() => {});
-  }
 }

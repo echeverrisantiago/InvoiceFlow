@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { fetchNewEmails } from '@/lib/email-imap';
+import { fetchNewEmails } from '@/lib/email-sync';
 
 export const maxDuration = 240;
 

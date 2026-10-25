@@ -200,7 +200,7 @@ function architecture() {
     ['Middleware', ['Auth + tenant', 'Rate limiting']],
     ['Rutas API', ['Subida · Extracción', 'Archivo · Edición · Export', 'Organización · Suscripción']],
     ['Cron jobs', ['fetch-emails (diario)', 'check-due-invoices']],
-    ['Librerías internas', ['email-imap · gmail', 'ia · plans', 'pdf/xml']],
+    ['Librerías internas', ['gmail · graph', 'ia · plans', 'pdf/xml']],
   ];
   backItems.forEach(([t, sub], i) => {
     s += box(280 + i * 290, 387, 270, 96, t, sub, LAYERS.back, { titleSize: 14, subSize: 11 });
@@ -243,7 +243,7 @@ function architecture() {
 
   // Panel C: externos (2 columnas x 4 filas)
   const ext = [
-    ['Gmail / Outlook', 'Gmail API + IMAP'],
+    ['Gmail / Outlook', 'APIs (solo lectura)'],
     ['Groq', 'IA (LangChain)'],
     ['Mercado Pago', 'suscripciones'],
     ['SendGrid', 'alertas email'],
@@ -308,7 +308,7 @@ function flow() {
   });
 
   // N1 entrada
-  s += box(70, 100, 620, 72, 'Entrada de la factura', ['Subida manual (PDF · imagen · ZIP · XML)  ó  correo (IMAP Gmail/Outlook)'], LAYERS.front, { titleSize: 16, subSize: 12 });
+  s += box(70, 100, 620, 72, 'Entrada de la factura', ['Subida manual (PDF · imagen · ZIP · XML)  ó  correo (Gmail / Outlook)'], LAYERS.front, { titleSize: 16, subSize: 12 });
 
   // D1
   s += diamond({ cx: 380, cy: 265, w: 440, h: 130, color: LAYERS.neutral });

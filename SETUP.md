@@ -55,6 +55,13 @@ Fill in each section:
 6. Add redirect URI: `http://localhost:3000/api/auth/email/gmail/callback`
 7. Copy Client ID and Secret
 
+#### Microsoft Entra (Outlook)
+1. Go to https://entra.microsoft.com → App registrations → New registration
+2. Add redirect URI: `http://localhost:3000/api/auth/email/outlook/callback`
+3. API permissions → Microsoft Graph → Delegated → add `Mail.Read`
+4. Certificates & secrets → create a client secret
+5. Copy Client ID, Secret and set `OUTLOOK_REDIRECT_URI`
+
 #### Mercado Pago
 1. Sign up at https://www.mercadopago.com.co/developers
 2. Create application

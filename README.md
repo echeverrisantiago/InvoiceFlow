@@ -136,6 +136,23 @@ GMAIL_CLIENT_SECRET=xxx
 GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/email/gmail/callback
 ```
 
+#### Microsoft Entra (Outlook)
+
+1. Ve a https://entra.microsoft.com → **App registrations** → New registration
+2. Añade la redirect URI `http://localhost:3000/api/auth/email/outlook/callback`
+3. En **API permissions** → Microsoft Graph → *Delegated* → añade `Mail.Read`
+4. En **Certificates & secrets**, crea un client secret
+5. Copia las credenciales:
+
+```env
+OUTLOOK_CLIENT_ID=xxx
+OUTLOOK_CLIENT_SECRET=xxx
+OUTLOOK_REDIRECT_URI=http://localhost:3000/api/auth/email/outlook/callback
+```
+
+> Solo lectura: la app nunca pide `Mail.Send`, `Mail.ReadWrite` ni
+> `IMAP.AccessAsUser.All`.
+
 #### Mercado Pago
 
 1. Regístrate en https://www.mercadopago.com.co/developers
@@ -212,7 +229,8 @@ EntraFactura/
 │   ├── prisma.ts           # Prisma client
 │   ├── ia.ts               # Extracción con Groq
 │   ├── gmail.ts            # Gmail API (solo lectura)
-│   ├── email-imap.ts       # Sincronización IMAP (Outlook)
+│   ├── graph.ts            # Microsoft Graph (solo lectura)
+│   ├── email-sync.ts       # Sincronización de correo (Gmail / Outlook)
 │   ├── mercadopago.ts      # Mercado Pago SDK
 │   ├── email.ts            # SendGrid
 │   ├── with-tenant.ts      # Multi-tenancy helpers
@@ -404,16 +422,23 @@ interno de 2/hora deja de aplicar; solo actívalo si quieres un tope explícito.
 | Proveedor | Acceso | Scope | Permiso que ve el usuario |
 |---|---|---|---|
 | Gmail | Gmail API (REST) | `gmail.readonly` | "Ver tus mensajes y configuraciones de correo" |
-| Outlook | IMAP | `IMAP.AccessAsUser.All` | Leer el correo |
+| Outlook | Microsoft Graph (REST) | `Mail.Read` | "Leer tu correo" |
 
-Gmail **no usa IMAP a propósito**: Google solo autoriza IMAP/SMTP con el scope
-completo `https://mail.google.com/`, que además permite **redactar, enviar y
-eliminar permanentemente** correo. Con `gmail.readonly` la app únicamente puede
-leer mensajes y adjuntos.
+Ninguno de los dos usa IMAP a propósito:
+
+- **Gmail**: Google solo autoriza IMAP/SMTP con el scope completo
+  `https://mail.google.com/`, que además permite **redactar, enviar y eliminar
+  permanentemente** correo.
+- **Outlook**: `IMAP.AccessAsUser.All` concede **lectura y escritura** del
+  buzón, y en cuentas corporativas IMAP puede estar deshabilitado.
+
+Con `gmail.readonly` y `Mail.Read` la app únicamente puede leer mensajes y
+adjuntos.
 
 > `gmail.readonly` sigue siendo un *scope restringido*: para publicar la app y
 > salir del límite de 100 usuarios, Google exige verificación + **CASA**
-> (auditoría anual de seguridad de terceros).
+> (auditoría anual de seguridad de terceros). Microsoft solo exige
+> **Publisher Verification**.
 
 Implementación:
 
@@ -421,15 +446,16 @@ Implementación:
 |---|---|
 | `lib/gmail.ts` | Cliente de la Gmail API (listar mensajes y descargar adjuntos) |
 | `lib/gmail-payload.ts` | Recorrido del árbol MIME (puro, testeado) |
+| `lib/graph.ts` | Cliente de Microsoft Graph (listar mensajes y descargar adjuntos) |
 | `lib/email-gmail.ts` | Importación de facturas nuevas de Gmail |
-| `lib/email-imap.ts` | Importación de Outlook (IMAP) |
-| `lib/email-processing.ts` | Procesamiento del adjunto (IA, factura, respaldo) |
-| `lib/email-file.ts` | Cursor, tokens y obtención del archivo original |
+| `lib/email-graph.ts` | Importación de facturas nuevas de Outlook |
+| `lib/email-sync.ts` | Enruta cada cuenta a su proveedor |
+| `lib/email-processing.ts` | Procesamiento del adjunto (IA + factura) |
+| `lib/email-file.ts` | Tokens, cursor y obtención del archivo original |
 
-El cursor de sincronización de Gmail es `email_accounts.lastEmailDate`
-(`internalDate` del último correo procesado); el de Outlook sigue siendo
-`lastEmailUid` (UID IMAP). Las facturas guardan `messageId` (Gmail) o
-`messageUid` (Outlook) para poder recuperar el adjunto original.
+El cursor de sincronización es `email_accounts.lastEmailDate` (fecha del último
+correo procesado) para ambos proveedores. Las facturas guardan `messageId` (id
+de la API de Gmail o de Graph) para recuperar el adjunto original.
 
 ### Cifrado de tokens OAuth
 
@@ -525,7 +551,7 @@ npm run storage:private
 - Exportación de facturas a Excel (`.xlsx`) en `/api/invoices/export`
 - Extracción de factura electrónica DIAN (XML/ZIP) sin IA y por IA (PDF/imagen)
 - Dashboard con KPIs, top de proveedores y resumen del mes
-- Sincronización de correo (Gmail API / Outlook IMAP)
+- Sincronización de correo (Gmail API / Microsoft Graph)
 - Rate limiting, cifrado de tokens OAuth y páginas legales (Privacidad/Términos)
 
 ### 🚧 Pendientes

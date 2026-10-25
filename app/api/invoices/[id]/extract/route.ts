@@ -104,11 +104,10 @@ export async function POST(
     if (
       invoice.source === 'EMAIL' &&
       invoice.emailAccountId &&
-      (invoice.messageUid || invoice.messageId)
+      invoice.messageId
     ) {
       invoiceFile = await getInvoiceFileFromEmail({
         emailAccountId: invoice.emailAccountId,
-        messageUid: invoice.messageUid,
         messageId: invoice.messageId,
         attachmentFilename: invoice.attachmentFilename,
       });
