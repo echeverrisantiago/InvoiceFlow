@@ -99,25 +99,7 @@ async function main() {
   }
 
   const prisma = new PrismaClient();
-  let orgsUpdated = 0;
   let accountsUpdated = 0;
-
-  const organizations = await prisma.organization.findMany({
-    select: { id: true, driveRefreshToken: true, onedriveRefreshToken: true },
-  });
-
-  for (const org of organizations) {
-    const data = {};
-    const drive = encrypt(org.driveRefreshToken, key);
-    const onedrive = encrypt(org.onedriveRefreshToken, key);
-    if (drive !== org.driveRefreshToken) data.driveRefreshToken = drive;
-    if (onedrive !== org.onedriveRefreshToken) data.onedriveRefreshToken = onedrive;
-
-    if (Object.keys(data).length > 0) {
-      if (!dryRun) await prisma.organization.update({ where: { id: org.id }, data });
-      orgsUpdated++;
-    }
-  }
 
   const accounts = await prisma.emailAccount.findMany({
     select: { id: true, oauthRefreshToken: true, oauthAccessToken: true },
@@ -139,7 +121,6 @@ async function main() {
   await prisma.$disconnect();
 
   console.log(`✅ ${dryRun ? 'Simulación' : 'Migración'} completa:`);
-  console.log(`   - Organizaciones ${dryRun ? 'por actualizar' : 'actualizadas'}: ${orgsUpdated}/${organizations.length}`);
   console.log(`   - Cuentas de correo ${dryRun ? 'por actualizar' : 'actualizadas'}: ${accountsUpdated}/${accounts.length}`);
 }
 

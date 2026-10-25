@@ -14,7 +14,6 @@ const STATUS_OPTIONS = [
   { value: 'OVERDUE', label: 'Vencido' },
   { value: 'PROCESSING', label: 'Procesando' },
   { value: 'EXTRACTED', label: 'Extraído' },
-  { value: 'BACKED_UP', label: 'Guardado' },
   { value: 'FAILED', label: 'Error' },
 ] as const;
 

@@ -3,13 +3,11 @@ import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
 import { withTimeout, type EmailAccountConfig } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
-import { decryptToken } from '@/lib/token-crypto';
 
 export type AttachmentOutcome = 'processed' | 'skipped' | 'duplicate';
 
 /**
- * Procesa un adjunto de correo: extrae los datos con IA, crea la factura y,
- * si procede, la respalda en Drive/OneDrive.
+ * Procesa un adjunto de correo: extrae los datos con IA y crea la factura.
  *
  * Compartido por la lectura de Gmail (Gmail API) y de Outlook (IMAP).
  */
@@ -100,35 +98,6 @@ export async function storeInvoiceFromAttachment({
             : 'PENDING',
       },
     });
-
-    const org = await prisma.organization.findUnique({
-      where: { id: config.organizationId },
-      select: {
-        driveRefreshToken: true,
-        onedriveRefreshToken: true,
-      },
-    });
-
-    const driveRefreshToken = decryptToken(org?.driveRefreshToken);
-    const onedriveRefreshToken = decryptToken(org?.onedriveRefreshToken);
-
-    if (config.provider === 'GMAIL' && driveRefreshToken) {
-      await backupToDrive({
-        buffer,
-        mimeType,
-        fileName,
-        refreshToken: driveRefreshToken,
-        invoiceId: invoice.id,
-      });
-    } else if (config.provider === 'OUTLOOK' && onedriveRefreshToken) {
-      await backupToOneDrive({
-        buffer,
-        contentType: mimeType,
-        fileName,
-        refreshToken: onedriveRefreshToken,
-        invoiceId: invoice.id,
-      });
-    }
   } else {
     await prisma.invoice.update({
       where: { id: invoice.id },
@@ -142,60 +111,3 @@ export async function storeInvoiceFromAttachment({
   return 'processed';
 }
 
-async function backupToDrive({
-  buffer,
-  mimeType,
-  fileName,
-  refreshToken,
-  invoiceId,
-}: {
-  buffer: Buffer;
-  mimeType: string;
-  fileName: string;
-  refreshToken: string;
-  invoiceId: string;
-}) {
-  try {
-    const { uploadToDrive } = await import('@/lib/drive');
-    const driveFileId = await withTimeout(
-      uploadToDrive({ fileName, refreshToken, buffer, contentType: mimeType }),
-      60_000,
-      'uploadToDrive'
-    );
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: { driveFileId, status: 'BACKED_UP' },
-    });
-  } catch (driveError) {
-    console.error('Google Drive upload error:', driveError);
-  }
-}
-
-async function backupToOneDrive({
-  buffer,
-  contentType,
-  fileName,
-  refreshToken,
-  invoiceId,
-}: {
-  buffer: Buffer;
-  contentType: string;
-  fileName: string;
-  refreshToken: string;
-  invoiceId: string;
-}) {
-  try {
-    const { uploadToOneDrive } = await import('@/lib/onedrive');
-    const onedriveFileId = await withTimeout(
-      uploadToOneDrive({ buffer, contentType, fileName, refreshToken }),
-      60_000,
-      'uploadToOneDrive'
-    );
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: { driveFileId: onedriveFileId, status: 'BACKED_UP' },
-    });
-  } catch (onedriveError) {
-    console.error('OneDrive upload error:', onedriveError);
-  }
-}

@@ -82,7 +82,7 @@ Si todo funciona:
 
 1. ✅ **Dashboard**: Ve los KPIs (estarán en 0)
 2. ✅ **Subir Factura**: `/dashboard/invoices/upload` - prueba subir un PDF, imagen, ZIP o XML (factura electrónica)
-3. ✅ **Google Drive**: `/dashboard/settings` - conecta tu cuenta (opcional)
+3. ✅ **Correo**: `/dashboard/settings` - conecta Gmail u Outlook para importar facturas
 
 ---
 
@@ -178,7 +178,7 @@ Si el problema persiste, proporciona esta información:
 ¡Felicidades! Ahora puedes:
 
 1. 📤 **Subir facturas** y ver la extracción con IA
-2. ☁️ **Conectar Google Drive** para backup automático
+2. 📧 **Conectar tu correo** (Gmail u Outlook) para importar facturas automáticamente
 3. 📊 **Ver analytics** de tus facturas
 4. 💰 **Configurar suscripción** (Mercado Pago - requiere credenciales)
 

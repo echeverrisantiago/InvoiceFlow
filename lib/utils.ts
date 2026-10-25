@@ -33,7 +33,6 @@ export function formatShortDate(date: Date | string): string {
 export const invoiceStatusLabels = {
   PROCESSING: 'Procesando',
   EXTRACTED: 'Extraído',
-  BACKED_UP: 'Guardado',
   FAILED: 'Error',
   PAID: 'Pagado',
   PENDING: 'Pendiente',
@@ -43,7 +42,6 @@ export const invoiceStatusLabels = {
 export const invoiceStatusColors = {
   PROCESSING: 'bg-yellow-100 text-yellow-800',
   EXTRACTED: 'bg-blue-100 text-blue-800',
-  BACKED_UP: 'bg-green-100 text-green-800',
   FAILED: 'bg-red-100 text-red-800',
   PAID: 'bg-orange-100 text-gray-800',
   PENDING: 'bg-orange-100 text-orange-800',

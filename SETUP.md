@@ -46,13 +46,14 @@ Fill in each section:
 3. Select "Full Access" or "Mail Send"
 4. Verify a sender email
 
-#### Google Drive API
+#### Google Cloud (Gmail)
 1. Go to https://console.cloud.google.com
 2. Create new project
-3. Enable "Google Drive API"
-4. Create OAuth 2.0 credentials
-5. Add redirect URI: `http://localhost:3000/api/auth/google-drive/callback`
-6. Copy Client ID and Secret
+3. Enable "Gmail API"
+4. Configure the OAuth consent screen with scope `https://www.googleapis.com/auth/gmail.readonly`
+5. Create OAuth 2.0 credentials
+6. Add redirect URI: `http://localhost:3000/api/auth/email/gmail/callback`
+7. Copy Client ID and Secret
 
 #### Mercado Pago
 1. Sign up at https://www.mercadopago.com.co/developers
@@ -130,12 +131,12 @@ Visit http://localhost:3000 and test:
 2. Verify recent invoices appear
 3. Navigate between pages
 
-#### Test Google Drive (Optional)
+#### Test Email Sync (Optional)
 1. Go to Settings
-2. Click "Conectar Google Drive"
-3. Authorize your Google account
-4. Upload another invoice
-5. Check your Google Drive for "EntraFactura" folder
+2. Connect Gmail or Outlook
+3. Authorize the account
+4. Send yourself an email with a PDF invoice attached
+5. Wait for the cron (or trigger `/api/cron/fetch-emails`) and check the invoices list
 
 #### Test Subscription Flow
 1. Go to Settings > Billing
@@ -163,12 +164,12 @@ git push -u origin main
    - Deploy!
 
 3. Update redirect URIs:
-   - Google Drive: Add `https://your-domain.vercel.app/api/auth/google-drive/callback`
+   - Gmail: Add `https://your-domain.vercel.app/api/auth/email/gmail/callback`
    - Mercado Pago: Add webhook URL `https://your-domain.vercel.app/api/subscriptions/webhook`
 
 4. Update environment variables:
    - Change `NEXT_PUBLIC_APP_URL` to your Vercel domain
-   - Change `GOOGLE_DRIVE_REDIRECT_URI` to production URL
+   - Change `GMAIL_REDIRECT_URI` to production URL
 
 ### Configure Production Services
 
@@ -204,7 +205,7 @@ Solution: Verify GROQ_API_KEY is correct and has credits
 ### SendGrid emails not sending
 Solution: Verify sender email is verified in SendGrid
 
-### Google Drive OAuth error
+### Gmail OAuth error
 Solution: Check redirect URI matches exactly in Google Console
 
 ## 📞 Support
@@ -223,7 +224,7 @@ Before going live:
 - [ ] Database migrations run successfully
 - [ ] Test registration and login
 - [ ] Test invoice upload and extraction
-- [ ] Test Google Drive integration
+- [ ] Test email sync (Gmail/Outlook)
 - [ ] Test email alerts (manually trigger cron)
 - [ ] Test payment flow
 - [ ] Deploy to Vercel

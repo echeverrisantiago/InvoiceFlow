@@ -47,7 +47,7 @@ const STEPS: Step[] = [
     target: 'sidebar-config',
     title: 'Configuración',
     description:
-      'Conecta tu correo electrónico (Gmail/Outlook) para recibir facturas automáticamente. También puedes vincular Google Drive o OneDrive.',
+      'Conecta tu correo electrónico (Gmail/Outlook) para recibir facturas automáticamente.',
     position: 'right',
   },
   {

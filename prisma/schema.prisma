@@ -36,7 +36,6 @@ enum SubscriptionStatus {
 enum InvoiceStatus {
   PROCESSING
   EXTRACTED
-  BACKED_UP
   FAILED
   PAID
   PENDING
@@ -95,14 +94,6 @@ model Organization {
   // NIT de la empresa (para distinguir facturas recibidas de emitidas)
   nit String?
 
-  // Google Drive integration
-  driveRefreshToken String?  @db.Text
-  driveTokenExpiry  DateTime?
-
-  // OneDrive integration
-  onedriveRefreshToken String? @db.Text
-  onedriveTokenExpiry  DateTime?
-
   // Relations
   members       OrganizationMember[]
   invoices      Invoice[]
@@ -153,9 +144,6 @@ model Invoice {
   // Gmail API message id — used by Gmail accounts (scope gmail.readonly).
   messageId          String?
   attachmentFilename String?
-
-  // Google Drive backup
-  driveFileId String?
 
   // Extracted data
   supplier      String?

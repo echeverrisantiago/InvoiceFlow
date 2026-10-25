@@ -8,16 +8,17 @@
  */
 
 export const LEGAL_EFFECTIVE_DATE = '2026-10-18';
+export const PRIVACY_EFFECTIVE_DATE = '2026-10-25';
 
 export const TERMS_VERSION = LEGAL_EFFECTIVE_DATE;
-export const PRIVACY_VERSION = LEGAL_EFFECTIVE_DATE;
+export const PRIVACY_VERSION = PRIVACY_EFFECTIVE_DATE;
 
 // SHA-256 del contenido exacto de app/terminos/page.tsx y app/privacidad/page.tsx.
 // Permite probar qué texto aceptó cada usuario sin almacenar el documento completo.
 export const TERMS_HASH =
   '913be7f5af46003b52bd18b204cb7f575b97fc13c6ab11900460bed26b5aa8c8';
 export const PRIVACY_HASH =
-  'f60d44cd57465542c5ad4b562749f6c708ac2eae7502efa595b2669dee2c692a';
+  'a4f58b631e09618dc2794bdf4c3d6398c52cd33c25faf3025b463f364a2181e4';
 
 export interface AcceptanceVersions {
   termsVersion: string;

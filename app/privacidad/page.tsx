@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     'Política de Privacidad y Tratamiento de Datos Personales de EntraFactura, conforme a la Ley 1581 de 2012 de Colombia.',
 };
 
-const UPDATED_AT = '18 de octubre de 2026';
+const UPDATED_AT = '25 de octubre de 2026';
 const CONTACT_EMAIL = 'soporte@entrafactura.com';
 
 export default function PrivacidadPage() {
@@ -84,7 +84,6 @@ export default function PrivacidadPage() {
         <li>Crear y administrar tu cuenta y el acceso al servicio.</li>
         <li>Procesar, extraer, organizar y respaldar tus facturas.</li>
         <li>Sincronizar facturas desde las cuentas de correo que conectes.</li>
-        <li>Guardar copias de respaldo en servicios de almacenamiento en la nube que autorices.</li>
         <li>Enviarte alertas de vencimiento y notificaciones relacionadas con el servicio.</li>
         <li>Gestionar la suscripción, los pagos y la facturación del servicio.</li>
         <li>Prestar soporte, atender solicitudes y mejorar el producto.</li>
@@ -109,8 +108,8 @@ export default function PrivacidadPage() {
         <li><strong>Supabase</strong> — autenticación, base de datos y almacenamiento.</li>
         <li><strong>Groq</strong> — procesamiento con inteligencia artificial para extraer datos de facturas.</li>
         <li><strong>SendGrid</strong> — envío de correos y alertas.</li>
-        <li><strong>Google</strong> — almacenamiento en Google Drive y acceso a Gmail, cuando lo autorizas.</li>
-        <li><strong>Microsoft</strong> — acceso a Outlook y almacenamiento en OneDrive, cuando lo autorizas.</li>
+        <li><strong>Google</strong> — acceso a Gmail, cuando lo autorizas.</li>
+        <li><strong>Microsoft</strong> — acceso a Outlook, cuando lo autorizas.</li>
         <li><strong>Mercado Pago</strong> — procesamiento de pagos y suscripciones.</li>
         <li><strong>Upstash</strong> — limitación de tasa y protección frente a abusos.</li>
         <li>

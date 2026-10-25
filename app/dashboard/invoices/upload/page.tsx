@@ -289,7 +289,7 @@ export default function UploadInvoicePage() {
               3
             </div>
             <p>
-              <strong>Guardado automático:</strong> Se guarda en Supabase y Google Drive
+              <strong>Guardado automático:</strong> Se guarda de forma segura en la nube
             </p>
           </div>
         </CardContent>

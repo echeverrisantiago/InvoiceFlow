@@ -188,7 +188,7 @@ function architecture() {
     ['Auth', ['Registro · Login', 'Reset de contraseña']],
     ['Dashboard', ['KPIs y resúmenes']],
     ['Facturas', ['Lista · Detalle', 'Subir factura']],
-    ['Configuración', ['Correos · NIT', 'Drive / OneDrive']],
+    ['Configuración', ['Correos · NIT', 'Suscripción']],
     ['Billing', ['Planes · Pago']],
   ];
   frontItems.forEach(([t, sub], i) => {
@@ -200,7 +200,7 @@ function architecture() {
     ['Middleware', ['Auth + tenant', 'Rate limiting']],
     ['Rutas API', ['Subida · Extracción', 'Archivo · Edición · Export', 'Organización · Suscripción']],
     ['Cron jobs', ['fetch-emails (diario)', 'check-due-invoices']],
-    ['Librerías internas', ['email-imap · ia', 'drive · onedrive', 'plans · pdf/xml']],
+    ['Librerías internas', ['email-imap · gmail', 'ia · plans', 'pdf/xml']],
   ];
   backItems.forEach(([t, sub], i) => {
     s += box(280 + i * 290, 387, 270, 96, t, sub, LAYERS.back, { titleSize: 14, subSize: 11 });
@@ -243,9 +243,7 @@ function architecture() {
 
   // Panel C: externos (2 columnas x 4 filas)
   const ext = [
-    ['Gmail / Outlook', 'IMAP + OAuth'],
-    ['OneDrive', 'backup'],
-    ['Google Drive', 'backup'],
+    ['Gmail / Outlook', 'Gmail API + IMAP'],
     ['Groq', 'IA (LangChain)'],
     ['Mercado Pago', 'suscripciones'],
     ['SendGrid', 'alertas email'],
@@ -334,7 +332,7 @@ function flow() {
 
   // N5..N8 pipeline
   s += box(100, 812, 560, 60, 'Guardar: Postgres + Supabase Storage', null, LAYERS.back, { titleSize: 15 });
-  s += box(100, 898, 560, 60, 'Backup: Google Drive / OneDrive (si está conectado)', null, LAYERS.back, { titleSize: 15 });
+  s += box(100, 898, 560, 60, 'Vista previa del archivo original', null, LAYERS.back, { titleSize: 15 });
   s += box(100, 984, 560, 60, 'Listado y detalle (totales, edición)', null, LAYERS.back, { titleSize: 15 });
   s += box(100, 1070, 560, 60, 'Export a Excel', null, LAYERS.back, { titleSize: 15 });
 

@@ -5,14 +5,14 @@
 ![Supabase](https://img.shields.io/badge/Supabase-Enabled-green?logo=supabase)
 ![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma)
 
-Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con extracción automática de datos mediante IA, backup en Google Drive y alertas de vencimiento.
+Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con extracción automática de datos mediante IA, importación desde Gmail/Outlook y alertas de vencimiento.
 
 ## 🚀 Características
 
 - ✅ **Autenticación Multi-Tenant**: Sistema de organizaciones con roles (Admin/Member)
 - 📄 **Subida de Facturas**: Soporta PDF, imágenes, ZIP y XML (factura electrónica DIAN)
 - 🤖 **Extracción automática**: factura electrónica (ZIP/XML → UBL 2.1) sin IA, y PDF/imágenes con IA (Groq)
-- ☁️ **Backup Automático**: Guardado en Supabase Storage y Google Drive del usuario
+- ☁️ **Almacenamiento seguro**: facturas guardadas en Supabase Storage (bucket privado, URLs firmadas)
 - 📊 **Dashboard Inteligente**: Visualiza facturas, proveedores y resúmenes mensuales
 - 🔔 **Alertas de Vencimiento**: Notificaciones por email con SendGrid
 - 💳 **Suscripciones**: Planes Básico, Profesional y Empresarial con Mercado Pago
@@ -24,7 +24,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 - **Backend**: Next.js API Routes, Server Actions
 - **Database**: PostgreSQL (Supabase) con Prisma ORM
 - **Auth**: Supabase Auth (sesiones con cookies SSR)
-- **Storage**: Supabase Storage + Google Drive API
+- **Storage**: Supabase Storage
 - **IA**: Groq (LangChain.js) con llama-3.3-70b-versatile
 - **Emails**: SendGrid
 - **Payments**: Mercado Pago
@@ -51,7 +51,7 @@ Flujo completo de una factura, desde que entra (carga manual o correo) hasta que
 - Cuenta de Groq API (https://console.groq.com)
 - Cuenta de SendGrid (https://sendgrid.com)
 - Cuenta de Mercado Pago para Desarrolladores (https://www.mercadopago.com.co/developers)
-- Proyecto en Google Cloud Console (para Google Drive API)
+- Proyecto en Google Cloud Console (para la Gmail API)
 
 ## 🔧 Instalación
 
@@ -118,21 +118,22 @@ SENDGRID_API_KEY=SG.xxx
 SENDGRID_FROM_EMAIL=noreply@tudominio.com
 ```
 
-#### Google Drive API
+#### Google Cloud (Gmail)
 
 1. Ve a https://console.cloud.google.com
 2. Crea un nuevo proyecto
-3. Habilita Google Drive API
-4. Crea credenciales OAuth 2.0:
+3. Habilita la **Gmail API**
+4. Configura la pantalla de consentimiento OAuth con el scope
+   `https://www.googleapis.com/auth/gmail.readonly` (solo lectura)
+5. Crea credenciales OAuth 2.0:
    - Application type: Web application
-   - Authorized redirect URIs: `http://localhost:3000/api/auth/google-drive/callback`
-5. Copia las credenciales:
+   - Authorized redirect URIs: `http://localhost:3000/api/auth/email/gmail/callback`
+6. Copia las credenciales:
 
 ```env
 GMAIL_CLIENT_ID=xxx.apps.googleusercontent.com
 GMAIL_CLIENT_SECRET=xxx
 GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/email/gmail/callback
-GOOGLE_DRIVE_REDIRECT_URI=http://localhost:3000/api/auth/google-drive/callback
 ```
 
 #### Mercado Pago
@@ -210,7 +211,8 @@ EntraFactura/
 │   ├── supabase/           # Clientes de Supabase
 │   ├── prisma.ts           # Prisma client
 │   ├── ia.ts               # Extracción con Groq
-│   ├── drive.ts            # Google Drive API
+│   ├── gmail.ts            # Gmail API (solo lectura)
+│   ├── email-imap.ts       # Sincronización IMAP (Outlook)
 │   ├── mercadopago.ts      # Mercado Pago SDK
 │   ├── email.ts            # SendGrid
 │   ├── with-tenant.ts      # Multi-tenancy helpers
@@ -245,7 +247,6 @@ EntraFactura/
 
 - **PROCESSING**: Subiendo archivo
 - **EXTRACTED**: Datos extraídos por IA
-- **BACKED_UP**: Guardado en Drive
 - **FAILED**: Error en extracción
 - **PAID**: Marcado como pagado
 - **PENDING**: Pendiente de pago
@@ -298,7 +299,7 @@ Nota: El horario está en UTC. `14:00 UTC` = `9:00 AM Colombia` (UTC-5)
 | **Profesional** | $119.000 COP | $1.190.000 COP | 200 por mes | 2 (Gmail / Outlook) |
 | **Empresarial** | $265.000 COP | $2.650.000 COP | 500 por mes | 3 (Gmail / Outlook) |
 
-Todos los planes incluyen extracción con IA, backup en la nube (Google Drive / OneDrive), alertas de vencimiento y dashboard completo.
+Todos los planes incluyen extracción con IA, almacenamiento seguro en la nube, alertas de vencimiento y dashboard completo.
 
 - **Plan anual**: pagas 10 meses y obtienes 12 (2 meses gratis).
 - Suscripciones recurrentes (débito automático) procesadas por Mercado Pago.
@@ -432,7 +433,7 @@ El cursor de sincronización de Gmail es `email_accounts.lastEmailDate`
 
 ### Cifrado de tokens OAuth
 
-Los refresh/access tokens de Google Drive, OneDrive, Gmail y Outlook se guardan
+Los refresh/access tokens de Gmail y Outlook se guardan
 **cifrados** en la base de datos con **AES-256-GCM** (autenticado, con IV
 aleatorio por valor). La implementación está en `lib/token-crypto.ts` y el
 formato en disco es `enc:v1:<iv>:<tag>:<ciphertext>` (todo en base64).
@@ -455,8 +456,7 @@ idempotente):
 npm run encrypt:tokens
 ```
 
-Columnas afectadas: `organizations.driveRefreshToken`,
-`organizations.onedriveRefreshToken`, `email_accounts.oauthRefreshToken` y
+Columnas afectadas: `email_accounts.oauthRefreshToken` y
 `email_accounts.oauthAccessToken`. Los valores heredados sin cifrar se siguen
 leyendo (pass-through), de modo que la migración puede ser gradual.
 
@@ -525,7 +525,7 @@ npm run storage:private
 - Exportación de facturas a Excel (`.xlsx`) en `/api/invoices/export`
 - Extracción de factura electrónica DIAN (XML/ZIP) sin IA y por IA (PDF/imagen)
 - Dashboard con KPIs, top de proveedores y resumen del mes
-- Sincronización de correo (Gmail/Outlook) y respaldo en Google Drive/OneDrive
+- Sincronización de correo (Gmail API / Outlook IMAP)
 - Rate limiting, cifrado de tokens OAuth y páginas legales (Privacidad/Términos)
 
 ### 🚧 Pendientes

@@ -47,9 +47,9 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="rounded-lg bg-card p-6 shadow-sm">
-                <h4 className="text-xl font-semibold">Backup en Drive</h4>
+                <h4 className="text-xl font-semibold">Importación desde tu correo</h4>
                 <p className="mt-2 text-muted-foreground">
-                  Guarda automáticamente tus facturas en Google Drive
+                  Conecta Gmail u Outlook y recibe tus facturas automáticamente
                 </p>
               </div>
               <div className="rounded-lg bg-card p-6 shadow-sm">

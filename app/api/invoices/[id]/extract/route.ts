@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
 import { extractInvoiceData } from '@/lib/ia';
-import { uploadToDrive } from '@/lib/drive';
 import { Prisma } from '@prisma/client';
 import { getInvoiceFileFromEmail } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { enforceRateLimit, extractOrgLimiter } from '@/lib/ratelimit';
-import { decryptToken } from '@/lib/token-crypto';
 import { resolveInvoiceStoragePath } from '@/lib/invoice-storage';
 
 function getPaymentStatusFromDueDate(dueDate: Date): 'PENDING' | 'OVERDUE' {
@@ -88,9 +86,6 @@ export async function POST(
       where: {
         id,
         organizationId: context.organization.id,
-      },
-      include: {
-        organization: true,
       },
     });
 
@@ -199,47 +194,6 @@ export async function POST(
         ),
       },
     });
-
-    // Upload to Google Drive (if configured)
-    const driveRefreshToken = decryptToken(invoice.organization.driveRefreshToken);
-    if (driveRefreshToken) {
-      try {
-        const driveFileId = await uploadToDrive(
-          invoiceFile
-            ? {
-                fileName: invoice.fileName,
-                refreshToken: driveRefreshToken,
-                buffer: invoiceFile.buffer,
-                contentType: invoiceFile.mimeType,
-              }
-            : {
-                fileUrl: invoice.fileUrl,
-                fileName: invoice.fileName,
-                refreshToken: driveRefreshToken,
-              }
-        );
-
-        // Update with Drive file ID
-        await prisma.invoice.update({
-          where: { id },
-          data: {
-            driveFileId,
-            status: 'BACKED_UP',
-          },
-        });
-      } catch (driveError: any) {
-        console.error('Drive upload error:', driveError);
-        if (driveError.message?.includes('invalid_grant')) {
-          await prisma.organization.update({
-            where: { id: invoice.organizationId },
-            data: {
-              driveRefreshToken: null,
-              driveTokenExpiry: null,
-            },
-          });
-        }
-      }
-    }
 
     return NextResponse.json({
       success: true,
