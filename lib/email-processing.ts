@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
 import { withTimeout, type EmailAccountConfig } from '@/lib/email-file';
 import { isInvoiceIssuedByOrganization } from '@/lib/electronic-invoice';
+import { registerExtractionFailure } from '@/lib/extraction-retry';
 
 export type AttachmentOutcome = 'processed' | 'skipped' | 'duplicate';
 
@@ -95,12 +96,11 @@ export async function storeInvoiceFromAttachment({
       },
     });
   } else {
-    await prisma.invoice.update({
-      where: { id: invoice.id },
-      data: {
-        status: 'FAILED',
-        extractedData: extraction.rawResponse,
-      },
+    await registerExtractionFailure({
+      invoiceId: invoice.id,
+      retryable: Boolean(extraction.retryable),
+      retryCount: 0,
+      rawResponse: extraction.rawResponse ?? { error: extraction.error },
     });
   }
 

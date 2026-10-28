@@ -47,6 +47,7 @@ function isPdf(fileName: string, fileUrl: string) {
 export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [items, setItems] = useState<InvoiceLineItem[]>(invoice.invoiceItems ?? []);
   const [form, setForm] = useState({
     supplier: invoice.supplier ?? '',
@@ -148,6 +149,34 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
       toast.error(error.message || 'Error al guardar factura');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRetryExtraction = async () => {
+    setRetrying(true);
+
+    try {
+      const response = await fetch(`/api/invoices/${invoice.id}/extract`, {
+        method: 'POST',
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al reintentar la extracción');
+      }
+
+      if (data.skipped) {
+        toast.info(data.message || 'La factura se omitió.');
+        router.push('/dashboard/invoices');
+        return;
+      }
+
+      toast.success('Factura extraída correctamente');
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || 'Error al reintentar la extracción');
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -273,6 +302,12 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
             <CardTitle>Datos de la factura</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
+            {invoice.status === 'FAILED' && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 md:col-span-2">
+                No pudimos leer esta factura automáticamente. Puedes reintentar
+                la extracción o completar los datos a mano.
+              </div>
+            )}
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="supplier">Proveedor</Label>
               <Input id="supplier" name="supplier" value={form.supplier} onChange={handleChange} />
@@ -411,8 +446,17 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
                 className="flex min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
-            <div className="md:col-span-2 flex justify-end">
-              <Button onClick={handleSave} disabled={loading}>
+            <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-2">
+              {invoice.status === 'FAILED' && (
+                <Button
+                  variant="outline"
+                  onClick={handleRetryExtraction}
+                  disabled={retrying || loading}
+                >
+                  {retrying ? 'Reintentando...' : 'Reintentar extracción'}
+                </Button>
+              )}
+              <Button onClick={handleSave} disabled={loading || retrying}>
                 {loading ? 'Guardando...' : 'Guardar cambios'}
               </Button>
             </div>

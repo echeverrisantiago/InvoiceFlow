@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchNewEmails } from '@/lib/email-sync';
 import { isSubscriptionActive } from '@/lib/subscription-status';
+import { runInvoiceExtraction } from '@/lib/invoice-extraction';
+import { MAX_EXTRACTION_ATTEMPTS } from '@/lib/extraction-retry';
 
 export const maxDuration = 240;
 
@@ -85,6 +87,55 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Reintentos de extracción programados (cuota de IA agotada, 429...).
+    const retryCandidates = await withTimeout(
+      prisma.invoice.findMany({
+        where: {
+          status: 'FAILED',
+          nextRetryAt: { not: null, lte: new Date() },
+          retryCount: { lt: MAX_EXTRACTION_ATTEMPTS },
+        },
+        select: {
+          id: true,
+          retryCount: true,
+          organization: {
+            select: { nit: true, subscription: true },
+          },
+        },
+        orderBy: { nextRetryAt: 'asc' },
+        take: 10,
+      }),
+      30_000,
+      'consulta reintentos de extracción'
+    );
+
+    const retries: Array<{
+      invoiceId: string;
+      result: string;
+      error?: string;
+    }> = [];
+
+    for (const candidate of retryCandidates) {
+      if (Date.now() - startTime > GLOBAL_TIMEOUT) break;
+      if (!isSubscriptionActive(candidate.organization.subscription, new Date())) {
+        continue;
+      }
+
+      try {
+        const outcome = await runInvoiceExtraction(
+          candidate.id,
+          candidate.organization.nit
+        );
+        retries.push({ invoiceId: candidate.id, result: outcome.kind });
+      } catch (error: unknown) {
+        retries.push({
+          invoiceId: candidate.id,
+          result: 'error',
+          error: error instanceof Error ? error.message : 'Error desconocido',
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -94,6 +145,8 @@ export async function GET(request: NextRequest) {
       accountsProcessed: results.length,
       totalInvoicesCreated: results.reduce((sum, r) => sum + r.processed, 0),
       totalInvoicesSkipped: results.reduce((sum, r) => sum + r.skipped, 0),
+      retriesProcessed: retries.length,
+      retries,
       details: results,
     });
   } catch (error: unknown) {

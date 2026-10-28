@@ -49,6 +49,7 @@ export async function PATCH(
         organizationId: true,
         subtotal: true,
         iva: true,
+        status: true,
       },
     });
 
@@ -88,6 +89,11 @@ export async function PATCH(
       total = round2(itemBase + iva);
     }
 
+    // Si el usuario completa a mano una factura que había fallado, deja de
+    // estar en error y se cancelan los reintentos pendientes.
+    const manuallyCompleted =
+      invoice.status === 'FAILED' && Boolean(body.supplier) && total !== null;
+
     await prisma.invoice.update({
       where: { id },
       data: {
@@ -102,6 +108,9 @@ export async function PATCH(
         internalNotes: body.internalNotes || null,
         invoiceItems,
         paymentStatus: body.paymentStatus,
+        ...(manuallyCompleted
+          ? { status: 'EXTRACTED' as const, retryCount: 0, nextRetryAt: null }
+          : {}),
       },
     });
 

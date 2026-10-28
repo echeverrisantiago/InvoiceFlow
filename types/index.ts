@@ -27,6 +27,8 @@ export interface ExtractionResult {
   rawResponse?: any;
   /** Where the data came from: DIAN XML parsing or the AI. */
   source?: 'XML' | 'AI';
+  /** Error transitorio (p. ej. cuota 429): conviene reintentar más tarde. */
+  retryable?: boolean;
 }
 
 export type PlanKey = 'STARTER' | 'PRO' | 'BUSINESS';

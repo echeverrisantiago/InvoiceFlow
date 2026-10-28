@@ -292,22 +292,37 @@ El prompt está optimizado para facturas colombianas con formato DD/MM/YYYY.
 - **Destinatarios**: Usuarios con rol ADMIN
 - **Prevención de duplicados**: Se registra cada envío en `alert_logs`
 
-### Configurar Vercel Cron
+### Cron (cron-job.org cada 5 minutos)
 
-En `vercel.json`:
+La sincronización **no** depende del cron de Vercel: se ejecuta desde
+[cron-job.org](https://cron-job.org) **cada 5 minutos** con:
 
-```json
-{
-  "crons": [
-    {
-      "path": "/api/cron/check-due-invoices",
-      "schedule": "0 0 * * *"
-    }
-  ]
-}
+```
+GET https://entrafactura.com/api/cron/fetch-emails
+Authorization: Bearer <CRON_SECRET>
 ```
 
-Nota: El horario está en UTC. `14:00 UTC` = `9:00 AM Colombia` (UTC-5)
+Cada ejecución hace dos cosas:
+
+1. **Sincroniza** las cuentas de correo activas (Gmail API / Microsoft Graph).
+2. **Reintenta** las extracciones pendientes (`invoices.nextRetryAt <= ahora`).
+
+`vercel.json` mantiene además los crons diarios de Vercel (`fetch-emails` y
+`check-due-invoices` a las 00:00 UTC). Ejecutar de más no hace daño: la
+importación es idempotente por `messageId` + adjunto.
+
+### Reintentos de extracción
+
+Cuando la IA falla por un error transitorio (cuota de Groq, HTTP 429):
+
+- Si el `retry-after` es corto (límite por minuto), se espera y se reintenta
+  dentro de la misma petición (máx. 25 s).
+- Si no (cuota diaria), la factura queda `FAILED` con `nextRetryAt` y el cron la
+  reintenta a los **5, 15 y 60 minutos** (`lib/extraction-retry.ts`).
+- Después de 3 reintentos queda en `FAILED` definitivo.
+- En el detalle de una factura `FAILED` aparece **"Reintentar extracción"**.
+- Si el usuario completa los datos a mano (proveedor + total), pasa a
+  `EXTRACTED` y se cancelan los reintentos.
 
 ## 💳 Suscripción
 

@@ -12,13 +12,81 @@ const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
   model: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b',
   temperature: 0,
+  // El plan gratuito rechaza peticiones con salida esperada > 1000 tokens/min.
+  maxTokens: 900,
 });
 
 const textModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
   model: process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b',
   temperature: 0,
+  maxTokens: 2000,
 });
+
+/**
+ * Reintento inmediato ante límites de tasa de Groq (429).
+ *
+ * Solo se espera dentro de la petición si la espera es corta (límites por
+ * minuto). Si la cuota es diaria, se propaga el error y la factura queda
+ * programada para reintentarse desde el cron.
+ */
+const MAX_INLINE_RETRIES = 1;
+const MAX_INLINE_WAIT_MS = 25_000;
+
+function isRateLimitError(error: unknown): boolean {
+  const e = error as any;
+  if (!e || typeof e !== 'object') return false;
+  return (
+    e.status === 429 ||
+    e.statusCode === 429 ||
+    e.name === 'RateLimitQuotaExhaustedError' ||
+    e?.error?.error?.code === 'rate_limit_exceeded' ||
+    e?.response?.status === 429
+  );
+}
+
+function retryAfterSeconds(error: unknown): number | null {
+  const e = error as any;
+  const raw =
+    e?.headers?.['retry-after'] ??
+    e?.response?.headers?.['retry-after'] ??
+    e?.headers?.get?.('retry-after');
+
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+async function invokeWithRateLimitRetry<T>(invoke: () => Promise<T>): Promise<T> {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await invoke();
+    } catch (error) {
+      if (!isRateLimitError(error) || attempt >= MAX_INLINE_RETRIES) {
+        throw error;
+      }
+
+      const seconds = retryAfterSeconds(error);
+
+      // Esperas largas (cuota diaria): no bloqueamos la petición; el cron
+      // reintentará la factura más adelante.
+      if (seconds !== null && seconds * 1000 > MAX_INLINE_WAIT_MS) {
+        throw error;
+      }
+
+      const waitMs = Math.min(
+        (seconds ?? (attempt + 1) * 5) * 1000,
+        MAX_INLINE_WAIT_MS
+      );
+      console.warn(
+        `[ia] Límite de Groq (429). Reintentando en ${Math.round(waitMs / 1000)}s...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      attempt++;
+    }
+  }
+}
 
 const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de facturas colombianas. Analiza la factura proporcionada y extrae los siguientes datos en formato JSON:
 
@@ -195,7 +263,7 @@ export async function extractInvoiceData(
       const message = new HumanMessage(
         `${EXTRACTION_PROMPT}\n\nContenido del documento:\n${pdfText.slice(0, 8000)}`
       );
-      result = await textModel.invoke([message]);
+      result = await invokeWithRateLimitRetry(() => textModel.invoke([message]));
     } else {
       // Send image directly to vision model
       const base64 = buffer.toString('base64');
@@ -206,7 +274,7 @@ export async function extractInvoiceData(
           { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
         ],
       });
-      result = await visionModel.invoke([message]);
+      result = await invokeWithRateLimitRetry(() => visionModel.invoke([message]));
     }
     const content = result.content.toString();
 
@@ -264,6 +332,7 @@ export async function extractInvoiceData(
       success: false,
       error: error.message || 'Error al extraer datos con IA',
       rawResponse: error,
+      retryable: isRateLimitError(error),
     };
   }
 }

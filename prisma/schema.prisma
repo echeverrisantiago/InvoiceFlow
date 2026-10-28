@@ -130,6 +130,10 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  // Reintentos de extracción (errores transitorios, p. ej. cuota 429)
+  retryCount  Int       @default(0)
+  nextRetryAt DateTime?
+
   // File information
   fileName String
   fileUrl  String
@@ -168,6 +172,7 @@ model Invoice {
   @@index([issueDate])
   @@index([dueDate])
   @@index([status])
+  @@index([status, nextRetryAt])
   @@index([paymentStatus])
   @@index([supplier])
   @@unique([emailAccountId, messageId, attachmentFilename])
