@@ -17,6 +17,7 @@ export type EditableInvoice = {
   fileName: string;
   fileUrl: string;
   createdAt: string | Date;
+  updatedAt: string | Date;
   supplier: string | null;
   supplierNit: string | null;
   issueDate: string | Date | null;

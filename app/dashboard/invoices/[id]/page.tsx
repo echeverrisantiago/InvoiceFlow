@@ -60,7 +60,10 @@ export default async function InvoiceDetailPage({
         </p>
       </div>
 
-      <InvoiceDetailForm invoice={invoice as unknown as EditableInvoice} />
+      <InvoiceDetailForm
+        key={new Date(invoice.updatedAt).toISOString()}
+        invoice={invoice as unknown as EditableInvoice}
+      />
     </div>
   );
 }
