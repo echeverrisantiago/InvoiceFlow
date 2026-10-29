@@ -28,6 +28,21 @@ export async function storeInvoiceFromAttachment({
   /** Id del mensaje en la API del proveedor (Gmail o Microsoft Graph). */
   messageId: string;
 }): Promise<AttachmentOutcome> {
+  // Si este adjunto ya está importado (mismo correo + archivo), no se vuelve a
+  // llamar a la IA. Evita gastar cuota cuando el cursor re-lista un correo.
+  const alreadyImported = await prisma.invoice.findFirst({
+    where: {
+      emailAccountId: config.id,
+      messageId,
+      attachmentFilename: fileName,
+    },
+    select: { id: true },
+  });
+
+  if (alreadyImported) {
+    return 'duplicate';
+  }
+
   const { extractInvoiceData } = await import('@/lib/ia');
   const extraction = await withTimeout(
     extractInvoiceData(buffer, mimeType, fileName),

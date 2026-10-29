@@ -147,6 +147,28 @@ export async function getGmailMessage({
   };
 }
 
+/** Fecha (`internalDate`) de un mensaje ya importado, sin descargar adjuntos. */
+export async function getGmailMessageDate({
+  accessToken,
+  messageId,
+}: {
+  accessToken: string;
+  messageId: string;
+}): Promise<number | null> {
+  const gmail = getGmailApi(accessToken);
+
+  try {
+    const { data } = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'minimal',
+    });
+    return data.internalDate ? Number(data.internalDate) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Verifica el acceso a la cuenta y devuelve su dirección de correo. */
 export async function getGmailProfileEmail(accessToken: string): Promise<string | null> {
   const gmail = getGmailApi(accessToken);

@@ -7,7 +7,7 @@ import {
   inferMimeType,
   type EmailAccountConfig,
 } from '@/lib/email-file';
-import { listGmailMessageIds, getGmailMessage } from '@/lib/gmail';
+import { listGmailMessageIds, getGmailMessage, getGmailMessageDate } from '@/lib/gmail';
 import { storeInvoiceFromAttachment } from '@/lib/email-processing';
 import type { FetchEmailsResult } from '@/lib/email-sync';
 
@@ -84,9 +84,44 @@ export async function fetchNewGmailEmails(
       `[fetchNewGmailEmails] ${messageIds.length} mensajes encontrados para ${config.email}.`
     );
 
+    // Mensajes que ya tienen facturas importadas: se omiten antes de descargar
+    // adjuntos o llamar a la IA (el cursor mantiene un solape de 60 s, así que
+    // el último correo vuelve a aparecer en cada ejecución).
+    const alreadyImported = messageIds.length
+      ? await prisma.invoice.findMany({
+          where: {
+            emailAccountId: config.id,
+            messageId: { in: messageIds },
+          },
+          select: { messageId: true },
+        })
+      : [];
+
+    const importedMessageIds = new Set(
+      alreadyImported
+        .map((row) => row.messageId)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    if (importedMessageIds.size > 0) {
+      console.log(
+        `[fetchNewGmailEmails] ${importedMessageIds.size} mensaje(s) ya importados: omitidos.`
+      );
+    }
+
     let maxInternalDate = config.lastEmailDate ? config.lastEmailDate.getTime() : 0;
 
     for (const messageId of messageIds) {
+      if (remainingQuota <= 0) break;
+
+      if (importedMessageIds.has(messageId)) {
+        // Solo se avanza el cursor: nada de descargas ni IA.
+        const internalDate = await getGmailMessageDate({ accessToken, messageId });
+        if (internalDate && internalDate > maxInternalDate) {
+          maxInternalDate = internalDate;
+        }
+        continue;
+      }
       if (remainingQuota <= 0) break;
 
       try {

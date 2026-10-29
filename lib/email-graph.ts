@@ -8,7 +8,7 @@ import {
   inferMimeType,
   type EmailAccountConfig,
 } from '@/lib/email-file';
-import { listGraphMessageIds, getGraphMessage, GraphApiError } from '@/lib/graph';
+import { listGraphMessages, getGraphMessage, GraphApiError } from '@/lib/graph';
 import { storeInvoiceFromAttachment } from '@/lib/email-processing';
 import type { FetchEmailsResult } from '@/lib/email-sync';
 
@@ -68,20 +68,54 @@ export async function fetchNewGraphEmails(
 
   try {
     // Graph devuelve los mensajes del más antiguo al más nuevo.
-    const messageIds = await listGraphMessageIds({
+    const messages = await listGraphMessages({
       accessToken,
       after,
       limit: MAX_EMAILS_PER_RUN,
     });
 
     console.log(
-      `[fetchNewGraphEmails] ${messageIds.length} mensajes encontrados para ${config.email}.`
+      `[fetchNewGraphEmails] ${messages.length} mensajes encontrados para ${config.email}.`
     );
+
+    const messageIds = messages.map((message) => message.id);
+
+    // Mensajes ya importados: se omiten antes de descargar adjuntos o llamar a
+    // la IA (el cursor mantiene un solape de 60 s).
+    const alreadyImported = messageIds.length
+      ? await prisma.invoice.findMany({
+          where: {
+            emailAccountId: config.id,
+            messageId: { in: messageIds },
+          },
+          select: { messageId: true },
+        })
+      : [];
+
+    const importedMessageIds = new Set(
+      alreadyImported
+        .map((row) => row.messageId)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    if (importedMessageIds.size > 0) {
+      console.log(
+        `[fetchNewGraphEmails] ${importedMessageIds.size} mensaje(s) ya importados: omitidos.`
+      );
+    }
 
     let maxReceivedAt = config.lastEmailDate ? config.lastEmailDate.getTime() : 0;
 
-    for (const messageId of messageIds) {
+    for (const { id: messageId, receivedAt } of messages) {
       if (remainingQuota <= 0) break;
+
+      if (importedMessageIds.has(messageId)) {
+        // Solo se avanza el cursor: nada de descargas ni IA.
+        if (receivedAt > maxReceivedAt) {
+          maxReceivedAt = receivedAt;
+        }
+        continue;
+      }
 
       try {
         const message = await getGraphMessage({ accessToken, messageId });

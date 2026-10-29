@@ -99,8 +99,14 @@ export function buildMessagesQuery({
   return `/me/mailFolders/inbox/messages?${params.toString()}`;
 }
 
-/** Ids de mensajes con adjuntos desde `after`, en orden ascendente. */
-export async function listGraphMessageIds({
+export interface GraphMessageRef {
+  id: string;
+  /** `receivedDateTime` en milisegundos epoch. */
+  receivedAt: number;
+}
+
+/** Mensajes con adjuntos desde `after`, en orden ascendente. */
+export async function listGraphMessages({
   accessToken,
   after,
   limit = 50,
@@ -108,15 +114,22 @@ export async function listGraphMessageIds({
   accessToken: string;
   after: Date;
   limit?: number;
-}): Promise<string[]> {
-  const data = await graphJson<{ value?: Array<{ id?: string }> }>(
-    accessToken,
-    buildMessagesQuery({ after, limit })
-  );
+}): Promise<GraphMessageRef[]> {
+  const data = await graphJson<{
+    value?: Array<{ id?: string; receivedDateTime?: string }>;
+  }>(accessToken, buildMessagesQuery({ after, limit }));
 
   return (data.value || [])
-    .map((message) => message.id)
-    .filter((id): id is string => Boolean(id));
+    .filter(
+      (message): message is { id: string; receivedDateTime?: string } =>
+        Boolean(message.id)
+    )
+    .map((message) => ({
+      id: message.id,
+      receivedAt: message.receivedDateTime
+        ? Date.parse(message.receivedDateTime)
+        : 0,
+    }));
 }
 
 async function fetchAttachmentBuffer(
