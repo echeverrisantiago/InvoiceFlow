@@ -66,6 +66,14 @@ export async function POST(
           message: outcome.message,
         });
 
+      case 'not-invoice':
+        return NextResponse.json({
+          success: false,
+          skipped: true,
+          reason: 'NOT_AN_INVOICE',
+          message: outcome.message,
+        });
+
       case 'retry': {
         const minutes = Math.max(
           1,

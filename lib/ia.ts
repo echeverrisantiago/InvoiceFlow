@@ -7,6 +7,7 @@ import {
   isZipFile,
   fileNameFromUrl,
 } from '@/lib/file-types';
+import { parseExtractionResponse } from '@/lib/extraction-parse';
 
 const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -88,9 +89,11 @@ async function invokeWithRateLimitRetry<T>(invoke: () => Promise<T>): Promise<T>
   }
 }
 
-const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de facturas colombianas. Analiza la factura proporcionada y extrae los siguientes datos en formato JSON:
+const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de facturas colombianas. Analiza el documento proporcionado y responde SOLO con este JSON:
 
 {
+  "isInvoice": true o false,
+  "documentType": "FACTURA" | "EXTRACTO" | "PUBLICIDAD" | "ENCUESTA" | "OTRO",
   "supplier": "Nombre del proveedor/emisor",
   "supplierNit": "NIT del proveedor (solo números y dígito de verificación)",
   "issueDate": "Fecha de emisión (formato ISO: YYYY-MM-DD)",
@@ -109,7 +112,19 @@ const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de 
   ]
 }
 
-IMPORTANTE:
+PRIMERO decide qué es el documento:
+- "FACTURA": factura de venta, cuenta de cobro, comprobante de pago o recibo de compra. Aunque esté girada, borrosa o sea una foto, si muestra proveedor y valores, ES una factura.
+- "EXTRACTO": extracto bancario o de tarjeta.
+- "PUBLICIDAD": imagen promocional o anuncio.
+- "ENCUESTA": encuesta, invitación o notificación.
+- "OTRO": cualquier otra cosa (logo, firma, captura de chat, etc.).
+
+Si NO es una factura:
+- "isInvoice": false
+- deja supplier, supplierNit, fechas, montos, description e items en null/[].
+- NO inventes datos.
+
+IMPORTANTE (solo si es factura):
 - Fechas en formato colombiano suelen ser DD/MM/YYYY - conviértelas a YYYY-MM-DD
 - Si no encuentras la fecha de vencimiento, calcula 30 días después de la fecha de emisión
 - Montos deben ser números sin puntos, comas ni símbolos (ej: 150000 no 150.000)
@@ -277,31 +292,34 @@ export async function extractInvoiceData(
       result = await invokeWithRateLimitRetry(() => visionModel.invoke([message]));
     }
     const content = result.content.toString();
+    const parsed = parseExtractionResponse(content);
 
-    // Parse JSON response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    if (parsed.kind === 'invalid') {
       return {
         success: false,
-        error: 'No se pudo extraer JSON de la respuesta',
-        rawResponse: content,
+        error: parsed.error,
+        rawResponse: parsed.raw,
       };
     }
 
-    const data: InvoiceData = JSON.parse(jsonMatch[0]);
-
-    if (!Array.isArray(data.items)) {
-      data.items = [];
+    if (parsed.kind === 'not-invoice') {
+      return {
+        success: false,
+        isInvoice: false,
+        error: `El documento no parece una factura (${parsed.documentType || 'otro'})`,
+        rawResponse: parsed.raw,
+      };
     }
 
-    // Validate data
-    if (!data.supplier || !data.total) {
+    if (parsed.kind === 'incomplete') {
       return {
         success: false,
         error: 'Datos incompletos en la extracción',
-        rawResponse: data,
+        rawResponse: parsed.data,
       };
     }
+
+    const data = parsed.data;
 
     // Validate math (subtotal + iva ≈ total)
     if (data.subtotal && data.iva && data.total) {

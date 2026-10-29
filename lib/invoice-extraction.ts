@@ -50,6 +50,7 @@ async function discardInvoice(invoice: {
 export type InvoiceExtractionOutcome =
   | { kind: 'extracted'; data: InvoiceData }
   | { kind: 'discarded'; message: string }
+  | { kind: 'not-invoice'; message: string }
   | { kind: 'retry'; error: string; nextRetryAt: Date; attempt: number }
   | { kind: 'failed'; error: string };
 
@@ -109,6 +110,23 @@ export async function runInvoiceExtraction(
     : await extractInvoiceData(invoice.fileUrl, undefined, invoice.fileName);
 
   if (!extraction.success || !extraction.data) {
+    // El documento no es una factura: se elimina la fila en lugar de dejarla
+    // como error en el listado.
+    if (extraction.isInvoice === false) {
+      await discardInvoice({
+        id: invoice.id,
+        filePath: invoice.filePath,
+        fileUrl: invoice.fileUrl,
+        source: invoice.source,
+      });
+
+      return {
+        kind: 'not-invoice',
+        message:
+          'El archivo no parece una factura, así que no se registró. Si estás seguro de que lo es, súbelo de nuevo o edítalo manualmente.',
+      };
+    }
+
     const error = extraction.error || 'Error al extraer datos';
 
     const failure = await registerExtractionFailure({

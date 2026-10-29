@@ -45,6 +45,12 @@ export async function storeInvoiceFromAttachment({
     return 'skipped';
   }
 
+  // El modelo determinó que el documento no es una factura (publicidad,
+  // extracto bancario, logo...): no se registra nada.
+  if (extraction.isInvoice === false) {
+    return 'skipped';
+  }
+
   const invoiceId = nanoid();
   let invoice;
   try {

@@ -29,6 +29,8 @@ export interface ExtractionResult {
   source?: 'XML' | 'AI';
   /** Error transitorio (p. ej. cuota 429): conviene reintentar más tarde. */
   retryable?: boolean;
+  /** `false` cuando el documento no es una factura (publicidad, extracto...). */
+  isInvoice?: boolean;
 }
 
 export type PlanKey = 'STARTER' | 'PRO' | 'BUSINESS';

@@ -272,7 +272,17 @@ EntraFactura/
 
 ## 🤖 Extracción con IA
 
-El sistema usa Groq con el modelo `llama-3.3-70b-versatile` para extraer:
+Usa dos modelos de Groq (`GROQ_TEXT_MODEL` y `GROQ_VISION_MODEL`):
+
+- **PDFs**: se extrae el texto con `unpdf` y se envía al modelo de texto.
+- **Imágenes** (JPG/PNG): van directamente al modelo de visión.
+- **Facturas electrónicas DIAN** (ZIP/XML): se parsean sin IA.
+
+Antes de extraer, el modelo **clasifica el documento** en la misma llamada
+(`isInvoice` / `documentType`). Si no es una factura (publicidad, encuesta,
+logo, extracto bancario…) se descarta y no aparece en el listado.
+
+Datos extraídos:
 
 - **Proveedor**: Nombre del emisor
 - **NIT**: Número de identificación tributaria
