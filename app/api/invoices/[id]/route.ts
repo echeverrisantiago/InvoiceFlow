@@ -1,31 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/with-tenant';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+import { normalizeInvoiceItem } from '@/lib/invoice-normalize';
+import type { InvoiceLineItem } from '@/types';
 
 function normalizeInvoiceItems(items: unknown) {
   if (!Array.isArray(items)) {
     return [];
   }
 
-  const round2 = (value: number) => Math.round(value * 100) / 100;
-
-  return items.map((item) => {
-    const current = item as Record<string, unknown>;
-    const quantity =
-      current.quantity === '' || current.quantity === null || current.quantity === undefined
-        ? null
-        : Number(current.quantity);
-    const unitPrice =
-      current.unitPrice === '' || current.unitPrice === null || current.unitPrice === undefined
-        ? null
-        : Number(current.unitPrice);
-    return {
-      description: String(current.description || ''),
-      quantity,
-      unitPrice,
-      total: round2((quantity ?? 0) * (unitPrice ?? 0)),
-    };
-  });
+  return items.map((item) =>
+    normalizeInvoiceItem(item as Partial<InvoiceLineItem>)
+  );
 }
 
 export async function PATCH(
@@ -106,7 +93,7 @@ export async function PATCH(
         total,
         description: body.description || null,
         internalNotes: body.internalNotes || null,
-        invoiceItems,
+        invoiceItems: invoiceItems as unknown as Prisma.InputJsonValue,
         paymentStatus: body.paymentStatus,
         ...(manuallyCompleted
           ? { status: 'EXTRACTED' as const, retryCount: 0, nextRetryAt: null }

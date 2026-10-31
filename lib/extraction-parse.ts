@@ -1,4 +1,5 @@
 import type { InvoiceData } from '@/types';
+import { normalizeInvoiceData } from '@/lib/invoice-normalize';
 
 /**
  * Interpreta la respuesta del modelo y decide si el documento es una factura.
@@ -57,10 +58,9 @@ export function parseExtractionResponse(content: string): ParsedExtraction {
     return { kind: 'not-invoice', documentType, raw: parsed };
   }
 
-  const data = parsed as InvoiceData;
-  data.items = items;
+  const data = normalizeInvoiceData(parsed as InvoiceData);
 
-  if (!data.supplier || !data.total) {
+  if (data.supplier == null || data.total == null) {
     return { kind: 'incomplete', data };
   }
 

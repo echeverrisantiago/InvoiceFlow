@@ -70,7 +70,12 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
   const round2 = (value: number) => Math.round(value * 100) / 100;
 
   const itemTotals = useMemo(
-    () => items.map((item) => round2((item.quantity ?? 0) * (item.unitPrice ?? 0))),
+    () =>
+      items.map((item) =>
+        item.total != null
+          ? round2(item.total)
+          : round2((item.quantity ?? 0) * (item.unitPrice ?? 0))
+      ),
     [items]
   );
 
@@ -98,10 +103,11 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     }
 
     const base = round2(
-      (invoice.invoiceItems ?? []).reduce(
-        (sum, item) => sum + (item.quantity ?? 0) * (item.unitPrice ?? 0),
-        0
-      )
+      (invoice.invoiceItems ?? []).reduce((sum, item) => {
+        const lineTotal =
+          item.total ?? (item.quantity ?? 0) * (item.unitPrice ?? 0);
+        return sum + lineTotal;
+      }, 0)
     );
     const iva = round2(base * 0.19);
     return { subtotal: base, iva, total: round2(base + iva) };
@@ -111,10 +117,11 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
   // the invoice's effective IVA rate when the items change.
   const recalcTotals = (nextItems: InvoiceLineItem[]) => {
     const base = round2(
-      nextItems.reduce(
-        (sum, item) => sum + (item.quantity ?? 0) * (item.unitPrice ?? 0),
-        0
-      )
+      nextItems.reduce((sum, item) => {
+        const lineTotal =
+          item.total ?? (item.quantity ?? 0) * (item.unitPrice ?? 0);
+        return sum + lineTotal;
+      }, 0)
     );
     const iva = round2(base * derivedIvaRate);
     setTotals({ subtotal: base, iva, total: round2(base + iva) });

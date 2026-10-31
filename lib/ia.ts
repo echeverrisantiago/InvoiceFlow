@@ -8,6 +8,7 @@ import {
   fileNameFromUrl,
 } from '@/lib/file-types';
 import { parseExtractionResponse } from '@/lib/extraction-parse';
+import { normalizeInvoiceData } from '@/lib/invoice-normalize';
 
 const visionModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -131,6 +132,7 @@ IMPORTANTE (solo si es factura):
 - NIT debe incluir dígito de verificación si está disponible
 - Si falta algún dato, usa null
 - Si hay varios productos o servicios, agrégalos en "items"
+- Si una línea no tiene cantidad (saldo anterior, cuota, ajuste), usa "quantity": 1 y "unitPrice" igual al total de la línea
 - Si no puedes identificar la cantidad o precio unitario de un ítem, usa null pero conserva la descripción
 - Valida que subtotal + iva ≈ total (con tolerancia del 1%)
 
@@ -237,7 +239,7 @@ export async function extractInvoiceData(
       if (outcome.data) {
         return {
           success: true,
-          data: outcome.data,
+          data: normalizeInvoiceData(outcome.data),
           rawResponse: { source: 'XML', fileName: fileName || undefined },
           source: 'XML',
         };
