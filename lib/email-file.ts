@@ -186,6 +186,61 @@ export function inferMimeType(fileName: string): string {
   return 'image/jpeg';
 }
 
+/** Imágenes: facturas fotografiadas, pero también logos y banners. */
+export function isImageAttachment(att: {
+  contentType?: string;
+  filename?: string;
+}): boolean {
+  const contentType = (att.contentType || '').toLowerCase();
+  const filename = (att.filename || '').toLowerCase();
+
+  if (/\.(png|jpe?g|webp|gif|bmp|heic|heif)$/.test(filename)) return true;
+  return contentType.startsWith('image/') && !contentType.includes('tiff');
+}
+
+/** Documentos que por sí solos ya son una factura (XML/PDF/ZIP DIAN). */
+export function isDocumentAttachment(att: {
+  contentType?: string;
+  filename?: string;
+}): boolean {
+  const contentType = (att.contentType || '').toLowerCase();
+  const filename = (att.filename || '').toLowerCase();
+
+  if (/\.(pdf|zip|xml)$/.test(filename)) return true;
+  return (
+    contentType.includes('pdf') ||
+    contentType.includes('zip') ||
+    contentType.includes('xml')
+  );
+}
+
+/** Un logo o icono nunca es una factura legible. */
+export const MIN_IMAGE_BYTES = 15 * 1024;
+
+/**
+ * Decide qué adjuntos de un correo deben procesarse como factura.
+ *
+ * - Si el correo trae un documento (PDF/ZIP/XML), las imágenes son decoración
+ *   (logos, banners): se ignoran.
+ * - Si solo trae imágenes, se aceptan las que tengan tamaño suficiente.
+ */
+export function selectInvoiceAttachments<
+  T extends { contentType?: string; filename?: string; content?: Buffer },
+>(attachments: T[]): T[] {
+  const hasDocument = attachments.some((att) => isDocumentAttachment(att));
+
+  return attachments.filter((att) => {
+    if (!isInvoiceAttachment(att)) return false;
+
+    if (isImageAttachment(att)) {
+      if (hasDocument) return false;
+      if ((att.content?.length ?? 0) < MIN_IMAGE_BYTES) return false;
+    }
+
+    return true;
+  });
+}
+
 /**
  * Elige el adjunto a previsualizar: primero el que coincide con el nombre
  * guardado en la factura y, si no, el primer adjunto que parezca factura.

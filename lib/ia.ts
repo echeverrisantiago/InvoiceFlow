@@ -153,12 +153,17 @@ async function tryElectronicInvoice(
   contentType: string,
   fileName: string
 ): Promise<ElectronicInvoiceOutcome> {
-  const { parseInvoiceFromZip, parseDianInvoiceXml } = await import(
-    '@/lib/electronic-invoice'
-  );
+  const { parseInvoiceFromZip, parseDianInvoiceXml, shouldUsePdfFallback } =
+    await import('@/lib/electronic-invoice');
 
   if (isZipFile(contentType, fileName)) {
     const result = parseInvoiceFromZip(buffer);
+
+    // El XML no trae los cobros (total 0): se usa el PDF como fuente real.
+    if (result.pdf && shouldUsePdfFallback(result.data ?? null, true)) {
+      return { pdfBuffer: result.pdf.buffer };
+    }
+
     if (result.data) {
       return { data: result.data, pdfBuffer: result.pdf?.buffer };
     }

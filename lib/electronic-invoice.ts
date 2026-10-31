@@ -148,6 +148,18 @@ export function isInvoiceIssuedByOrganization(
  * Extracts the invoice data from a Colombian DIAN UBL 2.1 XML string.
  * Returns null when the XML is not a recognizable invoice document.
  */
+/**
+ * Un XML con total 0 suele venir incompleto (p. ej. Movistar: solo el servicio,
+ * sin equipo ni saldo anterior). En ese caso conviene leer el PDF del ZIP.
+ */
+export function shouldUsePdfFallback(
+  data: InvoiceData | null,
+  hasPdf: boolean
+): boolean {
+  if (!hasPdf || !data) return false;
+  return !data.total || data.total <= 0;
+}
+
 export function parseDianInvoiceXml(xml: string): InvoiceData | null {
   const parsed = parseXml(xml);
   if (!parsed) return null;

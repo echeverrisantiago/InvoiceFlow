@@ -4,7 +4,7 @@ import { getInvoiceQuota } from '@/lib/plans';
 import {
   getAccessTokenForOAuth,
   flagNeedsReconnect,
-  isInvoiceAttachment,
+  selectInvoiceAttachments,
   inferMimeType,
   type EmailAccountConfig,
 } from '@/lib/email-file';
@@ -128,9 +128,10 @@ export async function fetchNewGraphEmails(
           maxReceivedAt = message.receivedAt;
         }
 
-        for (const attachment of message.attachments) {
+        const invoiceAttachments = selectInvoiceAttachments(message.attachments);
+
+        for (const attachment of invoiceAttachments) {
           if (remainingQuota <= 0) break;
-          if (!isInvoiceAttachment(attachment)) continue;
 
           try {
             const fileName = attachment.filename || `invoice-${nanoid()}.pdf`;
