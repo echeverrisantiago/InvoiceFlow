@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     'Política de Privacidad y Tratamiento de Datos Personales de EntraFactura, conforme a la Ley 1581 de 2012 de Colombia.',
 };
 
-const UPDATED_AT = '25 de octubre de 2026';
+const UPDATED_AT = '2 de noviembre de 2026';
 const CONTACT_EMAIL = 'soporte@entrafactura.com';
 
 export default function PrivacidadPage() {
@@ -121,6 +121,41 @@ export default function PrivacidadPage() {
       <p>
         No vendemos ni alquilamos tus datos personales. Solo los compartimos con estos
         proveedores en la medida necesaria para prestar el servicio o cuando la ley lo exija.
+      </p>
+
+      <h3>Uso de datos de Google (Gmail)</h3>
+      <p>
+        Cuando conectas tu cuenta de Gmail, EntraFactura accede únicamente a los mensajes
+        y adjuntos necesarios para identificar y registrar tus facturas. No modificamos,
+        enviamos ni eliminamos correos, y no usamos esos datos para publicidad ni para
+        entrenar modelos.
+      </p>
+      <ul>
+        <li>
+          <strong>Acceso</strong>: lectura de mensajes y adjuntos (permiso
+          <code>gmail.readonly</code>).
+        </li>
+        <li>
+          <strong>Uso</strong>: extraer los datos de las facturas y guardarlas en tu cuenta.
+        </li>
+        <li>
+          <strong>Almacenamiento</strong>: Supabase (base de datos y almacenamiento), con
+          cifrado en tránsito y en reposo. Los tokens de acceso se guardan cifrados.
+        </li>
+        <li>
+          <strong>Compartición</strong>: solo con los encargados listados arriba, en la
+          medida necesaria para prestar el servicio.
+        </li>
+        <li>
+          <strong>Revocación</strong>: puedes desconectar Gmail desde Configuración o
+          retirar el acceso desde tu cuenta de Google en cualquier momento.
+        </li>
+      </ul>
+      <p>
+        El uso y la transferencia a cualquier otra aplicación de la información recibida
+        de las API de Google por parte de EntraFactura se ajustan a la{' '}
+        <strong>Política de Datos de Usuario de los Servicios API de Google</strong>,
+        incluidos los requisitos de <strong>Uso Limitado</strong>.
       </p>
 
       <h2>6. Transferencias internacionales</h2>
