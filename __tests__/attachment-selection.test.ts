@@ -65,7 +65,7 @@ describe('selectInvoiceAttachments', () => {
         content: Buffer.alloc(1000),
       },
       {
-        filename: 'Estado de cuenta 2026-10.pdf',
+        filename: 'loan_account-60360792460.pdf',
         contentType: 'application/pdf',
         content: Buffer.alloc(1000),
       },
@@ -79,6 +79,18 @@ describe('selectInvoiceAttachments', () => {
     const result = selectInvoiceAttachments([...statements, factura]);
 
     expect(result.map((att) => att.filename)).toEqual(['factura-octubre.pdf']);
+  });
+
+  it('no confunde el "estado de cuenta" de una factura de servicios', () => {
+    const factura = {
+      filename: 'Estado_Cuenta_6055497193.pdf',
+      contentType: 'application/pdf',
+      content: Buffer.alloc(1000),
+    };
+
+    const result = selectInvoiceAttachments([factura]);
+
+    expect(result).toHaveLength(1);
   });
 
   it('ignora adjuntos que no son factura', () => {

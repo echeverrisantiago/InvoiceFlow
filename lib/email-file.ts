@@ -220,9 +220,11 @@ export const MIN_IMAGE_BYTES = 15 * 1024;
 /**
  * Extractos y certificados bancarios: no son cuentas por pagar. Se descartan
  * antes de llamar a la IA (suelen venir además protegidos con contraseña).
+ *
+ * Ojo: no se filtra "estado de cuenta" porque Movistar/Claro usan ese nombre
+ * para la factura del mes.
  */
-const BANK_STATEMENT_PATTERN =
-  /extracto|estado[_ -]?de[_ -]?cuenta|estado[_ -]?cuenta|certificado bancario|cuenta de ahorros/i;
+const BANK_STATEMENT_PATTERN = /extracto|certificado bancario|loan_account/i;
 
 export function isBankStatementAttachment(att: {
   filename?: string;
