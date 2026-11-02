@@ -218,8 +218,23 @@ export function isDocumentAttachment(att: {
 export const MIN_IMAGE_BYTES = 15 * 1024;
 
 /**
+ * Extractos y certificados bancarios: no son cuentas por pagar. Se descartan
+ * antes de llamar a la IA (suelen venir además protegidos con contraseña).
+ */
+const BANK_STATEMENT_PATTERN =
+  /extracto|estado[_ -]?de[_ -]?cuenta|estado[_ -]?cuenta|certificado bancario|cuenta de ahorros/i;
+
+export function isBankStatementAttachment(att: {
+  filename?: string;
+  contentType?: string;
+}): boolean {
+  return BANK_STATEMENT_PATTERN.test(att.filename || '');
+}
+
+/**
  * Decide qué adjuntos de un correo deben procesarse como factura.
  *
+ * - Descarta extractos/certificados bancarios.
  * - Si el correo trae un documento (PDF/ZIP/XML), las imágenes son decoración
  *   (logos, banners): se ignoran.
  * - Si solo trae imágenes, se aceptan las que tengan tamaño suficiente.
@@ -230,6 +245,7 @@ export function selectInvoiceAttachments<
   const hasDocument = attachments.some((att) => isDocumentAttachment(att));
 
   return attachments.filter((att) => {
+    if (isBankStatementAttachment(att)) return false;
     if (!isInvoiceAttachment(att)) return false;
 
     if (isImageAttachment(att)) {

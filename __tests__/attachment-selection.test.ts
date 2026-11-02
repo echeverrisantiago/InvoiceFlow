@@ -57,6 +57,30 @@ describe('selectInvoiceAttachments', () => {
     expect(result.map((att) => att.filename)).toEqual(['factura.pdf']);
   });
 
+  it('ignora extractos y certificados bancarios', () => {
+    const statements = [
+      {
+        filename: 'Extracto_1175702641_202610_TARJETA_VISA_d768.pdf',
+        contentType: 'application/pdf',
+        content: Buffer.alloc(1000),
+      },
+      {
+        filename: 'Estado de cuenta 2026-10.pdf',
+        contentType: 'application/pdf',
+        content: Buffer.alloc(1000),
+      },
+    ];
+    const factura = {
+      filename: 'factura-octubre.pdf',
+      contentType: 'application/pdf',
+      content: Buffer.alloc(1000),
+    };
+
+    const result = selectInvoiceAttachments([...statements, factura]);
+
+    expect(result.map((att) => att.filename)).toEqual(['factura-octubre.pdf']);
+  });
+
   it('ignora adjuntos que no son factura', () => {
     const csv = {
       filename: 'datos.csv',

@@ -606,6 +606,7 @@ npm run storage:private
 - Extracción/OCR más robusto para facturas escaneadas
 - App móvil nativa
 - API pública para integraciones
+- **Extractos bancarios (conciliación)** — leer PDFs con contraseña como entidad propia, nunca como factura. Ver [`docs/backlog.md`](docs/backlog.md).
 
 ## 🐛 Troubleshooting
 
