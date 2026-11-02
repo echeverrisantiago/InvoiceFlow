@@ -49,10 +49,22 @@ export function EmailAccountsForm({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [showGmailNotice, setShowGmailNotice] = useState(false);
 
   useEffect(() => {
     loadAccounts();
   }, []);
+
+  useEffect(() => {
+    if (!showGmailNotice) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowGmailNotice(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showGmailNotice]);
 
   async function loadAccounts() {
     try {
@@ -70,6 +82,18 @@ export function EmailAccountsForm({
     setConnecting(provider);
     setError('');
     window.location.href = `/api/auth/email/${provider}`;
+  }
+
+  /**
+   * Solo la primera vez (sin ningún correo conectado) se avisa del cartel de
+   * app no verificada de Google. Al añadir o cambiar una cuenta, va directo.
+   */
+  function handleGmailClick() {
+    if (accounts.length === 0) {
+      setShowGmailNotice(true);
+      return;
+    }
+    handleOAuthConnect('gmail');
   }
 
   async function handleDelete(id: string) {
@@ -232,7 +256,7 @@ export function EmailAccountsForm({
           <Button
             variant="outline"
             className="h-auto py-4 px-4 justify-start gap-3 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-            onClick={() => handleOAuthConnect('gmail')}
+            onClick={handleGmailClick}
             disabled={connecting !== null}
           >
             {connecting === 'gmail' ? (
@@ -279,6 +303,76 @@ export function EmailAccountsForm({
         <p className="text-sm text-muted-foreground">
           Solo los administradores pueden conectar correos.
         </p>
+      )}
+
+      {showGmailNotice && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onClick={() => setShowGmailNotice(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gmail-notice-title"
+            className="w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            </div>
+
+            <h2
+              id="gmail-notice-title"
+              className="text-xl font-semibold tracking-tight"
+            >
+              Google mostrará un aviso
+            </h2>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              Mientras terminamos la verificación con Google, al conectar Gmail
+              verás una pantalla que dice{' '}
+              <strong>&ldquo;Google no ha verificado esta aplicación&rdquo;</strong>.
+              Es normal y solo aparece la primera vez.
+            </p>
+
+            <div className="mt-4 rounded-lg border bg-muted/40 p-3 text-sm">
+              <p className="font-medium">Para continuar:</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
+                <li>
+                  Pulsa <strong>Configuración avanzada</strong> (abajo a la
+                  izquierda).
+                </li>
+                <li>
+                  Pulsa <strong>Ir a Entrafactura (no seguro)</strong>.
+                </li>
+                <li>Autoriza el acceso a tu correo.</li>
+              </ol>
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              EntraFactura solo lee los correos y adjuntos necesarios para
+              registrar tus facturas. No envía, modifica ni elimina nada.
+            </p>
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowGmailNotice(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowGmailNotice(false);
+                  handleOAuthConnect('gmail');
+                }}
+              >
+                Entendido, continuar
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
