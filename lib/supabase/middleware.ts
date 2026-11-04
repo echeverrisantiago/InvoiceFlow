@@ -46,10 +46,13 @@ export async function updateSession(request: NextRequest) {
 
   const user = session?.user ?? null;
 
-  // Don't redirect on auth callback or cron routes (cron uses its own auth)
+  // Don't redirect on auth callback, cron or webhook routes: las llaman
+  // servidores externos (Google/Microsoft, cron-job.org, Mercado Pago) sin
+  // sesión de usuario. Cada una valida su propia autenticación.
   if (
     request.nextUrl.pathname.startsWith('/api/auth') ||
     request.nextUrl.pathname.startsWith('/api/cron') ||
+    request.nextUrl.pathname.startsWith('/api/subscriptions/webhook') ||
     request.nextUrl.pathname.startsWith('/_next')
   ) {
     return supabaseResponse;

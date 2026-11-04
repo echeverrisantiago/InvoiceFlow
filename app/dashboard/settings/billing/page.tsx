@@ -75,6 +75,33 @@ export default function BillingPage() {
     setCheckout('processing');
   }, []);
 
+  // Red de seguridad: si al entrar a facturación la suscripción no está activa,
+  // se sincroniza con Mercado Pago (por si el webhook se perdió).
+  const subscriptionLoaded = subscription !== null;
+  const subscriptionActive = subscription?.isActive ?? false;
+
+  useEffect(() => {
+    if (!subscriptionLoaded || subscriptionActive) return;
+
+    let cancelled = false;
+
+    fetch('/api/subscriptions/status', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.subscription?.status === 'ACTIVE') {
+          refetch();
+        }
+      })
+      .catch(() => {
+        /* silencioso */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subscriptionLoaded, subscriptionActive, refetch]);
+
   // Consulta el estado (sincronizando con Mercado Pago) hasta confirmar.
   useEffect(() => {
     if (checkout !== 'processing') return;

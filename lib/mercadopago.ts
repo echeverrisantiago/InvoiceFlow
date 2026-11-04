@@ -1,8 +1,8 @@
+import crypto from 'node:crypto';
 import MercadoPagoConfig, {
   Payment,
   PreApproval,
   Invoice,
-  WebhookSignatureValidator,
 } from 'mercadopago';
 import {
   BillingInterval,
@@ -129,6 +129,9 @@ export async function getPayment(paymentId: string) {
 /**
  * Validate a Mercado Pago webhook signature.
  * When no secret is configured it trusts the request (local/dev).
+ *
+ * Implementado a mano porque la versión del SDK compara `Date.now()` (ms) con
+ * el `ts` de la firma (segundos) y rechaza todas las notificaciones válidas.
  */
 export function verifyWebhookSignature(params: {
   xSignature: string | null;
@@ -138,17 +141,44 @@ export function verifyWebhookSignature(params: {
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
   if (!secret) return true;
 
-  try {
-    WebhookSignatureValidator.validate({
-      xSignature: params.xSignature,
-      xRequestId: params.xRequestId,
-      dataId: params.dataId,
-      secret,
-      toleranceSeconds: 300,
-    });
-    return true;
-  } catch (error) {
-    console.error('Webhook signature validation failed:', error);
+  const { xSignature, xRequestId, dataId } = params;
+  if (!xSignature) return false;
+
+  let ts: string | undefined;
+  let received: string | undefined;
+
+  for (const part of xSignature.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim().toLowerCase();
+    const value = part.slice(eq + 1).trim();
+    if (key === 'ts') ts = value;
+    else if (key === 'v1') received = value;
+  }
+
+  if (!ts || !received || !/^\d+$/.test(ts)) return false;
+
+  const manifestParts: string[] = [];
+  if (dataId) manifestParts.push(`id:${dataId.toLowerCase()}`);
+  if (xRequestId) manifestParts.push(`request-id:${xRequestId}`);
+  manifestParts.push(`ts:${ts}`);
+  const manifest = `${manifestParts.join(';')};`;
+
+  const computed = crypto
+    .createHmac('sha256', secret)
+    .update(manifest)
+    .digest('hex');
+
+  const expected = Buffer.from(computed);
+  const actual = Buffer.from(received);
+  if (
+    expected.length !== actual.length ||
+    !crypto.timingSafeEqual(expected, actual)
+  ) {
     return false;
   }
+
+  // `ts` viene en segundos; tolerancia de 5 minutos.
+  const driftSeconds = Math.abs(Date.now() / 1000 - Number(ts));
+  return Number.isFinite(driftSeconds) && driftSeconds <= 300;
 }
