@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Check, Loader2, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
@@ -30,10 +31,19 @@ const formatCop = (value: number) =>
   }).format(value);
 
 export default function BillingPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState<PlanKey | null>(null);
   const [canceling, setCanceling] = useState(false);
   const [interval, setInterval] = useState<BillingInterval>(DEFAULT_INTERVAL);
   const [notice, setNotice] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<
+    'idle' | 'processing' | 'success' | 'timeout' | 'error'
+  >('idle');
+  const [pollKey, setPollKey] = useState(0);
+  const [confirmed, setConfirmed] = useState<{
+    plan: string | null;
+    currentPeriodEnd: string | null;
+  } | null>(null);
   const { subscription, refetch } = useOrganization();
 
   const currentPlan = subscription?.plan as PlanKey | undefined;
@@ -46,6 +56,77 @@ export default function BillingPage() {
       setInterval(subscription.interval);
     }
   }, [subscription?.interval]);
+
+  // Al volver del checkout de Mercado Pago mostramos el estado del pago.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const returning =
+      params.get('checkout') === 'return' ||
+      Boolean(params.get('preapproval_id'));
+
+    if (!returning) return;
+
+    const mpStatus = params.get('status');
+    if (mpStatus === 'failure' || mpStatus === 'rejected') {
+      setCheckout('error');
+      return;
+    }
+
+    setCheckout('processing');
+  }, []);
+
+  // Consulta el estado (sincronizando con Mercado Pago) hasta confirmar.
+  useEffect(() => {
+    if (checkout !== 'processing') return;
+
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = async () => {
+      attempts++;
+
+      try {
+        const res = await fetch('/api/subscriptions/status', {
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data?.subscription?.status === 'ACTIVE') {
+          setConfirmed({
+            plan: data.subscription.plan ?? null,
+            currentPeriodEnd: data.subscription.currentPeriodEnd ?? null,
+          });
+          await refetch();
+          if (cancelled) return;
+
+          setCheckout('success');
+          window.history.replaceState({}, '', window.location.pathname);
+          setTimeout(() => router.push('/dashboard/invoices'), 4000);
+          return;
+        }
+      } catch {
+        /* reintentar */
+      }
+
+      if (cancelled) return;
+
+      if (attempts >= 30) {
+        setCheckout('timeout');
+        return;
+      }
+
+      timer = setTimeout(tick, 2000);
+    };
+
+    timer = setTimeout(tick, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [checkout, pollKey, refetch, router]);
 
   const noticeConfig: Record<
     string,
@@ -143,6 +224,111 @@ export default function BillingPage() {
       setCanceling(false);
     }
   };
+
+  if (checkout !== 'idle') {
+    const confirmedPlanName =
+      confirmed?.plan && PLANS[confirmed.plan as PlanKey]
+        ? PLANS[confirmed.plan as PlanKey].name
+        : null;
+
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center gap-4 px-8 py-10 text-center">
+            {checkout === 'processing' && (
+              <>
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <h2 className="text-xl font-semibold">Confirmando tu pago…</h2>
+                <p className="text-sm text-muted-foreground">
+                  Estamos verificando la suscripción con Mercado Pago. No
+                  cierres esta ventana.
+                </p>
+              </>
+            )}
+
+            {checkout === 'success' && (
+              <>
+                <CheckCircle2 className="h-12 w-12 text-green-600" />
+                <h2 className="text-xl font-semibold">
+                  ¡Suscripción activada!
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {confirmedPlanName ? `Plan ${confirmedPlanName}` : 'Tu plan está activo'}
+                  {confirmed?.currentPeriodEnd
+                    ? ` · próximo cobro el ${new Date(
+                        confirmed.currentPeriodEnd
+                      ).toLocaleDateString('es-CO')}`
+                    : ''}
+                </p>
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => router.push('/dashboard/invoices')}
+                >
+                  Ir a mis facturas
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Te llevaremos automáticamente en unos segundos…
+                </p>
+              </>
+            )}
+
+            {checkout === 'timeout' && (
+              <>
+                <AlertTriangle className="h-12 w-12 text-amber-500" />
+                <h2 className="text-xl font-semibold">Seguimos confirmando</h2>
+                <p className="text-sm text-muted-foreground">
+                  Mercado Pago aún no confirma el pago. Suele tardar unos
+                  segundos; puedes reintentar o seguir usando la app.
+                </p>
+                <div className="mt-2 flex w-full flex-col gap-2">
+                  <Button
+                    onClick={() => {
+                      setCheckout('processing');
+                      setPollKey((key) => key + 1);
+                    }}
+                  >
+                    Reintentar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/dashboard/invoices')}
+                  >
+                    Ir a mis facturas
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {checkout === 'error' && (
+              <>
+                <AlertTriangle className="h-12 w-12 text-red-600" />
+                <h2 className="text-xl font-semibold">
+                  El pago no se completó
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  No se realizó ningún cobro. Puedes intentarlo de nuevo cuando
+                  quieras.
+                </p>
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => {
+                    window.history.replaceState(
+                      {},
+                      '',
+                      window.location.pathname
+                    );
+                    setCheckout('idle');
+                  }}
+                >
+                  Volver a los planes
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -382,6 +568,18 @@ export default function BillingPage() {
           </div>
         </CardContent>
       </Card>
+
+      {loading !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm font-medium">Redirigiendo a Mercado Pago…</p>
+            <p className="text-xs text-muted-foreground">
+              No cierres esta ventana
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

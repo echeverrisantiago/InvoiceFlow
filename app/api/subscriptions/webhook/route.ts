@@ -7,6 +7,7 @@ import {
   verifyWebhookSignature,
 } from '@/lib/mercadopago';
 import { notifyPaymentFailed } from '@/lib/subscription-notifications';
+import { applyPreapproval } from '@/lib/subscription-sync';
 import {
   BillingInterval,
   PlanKey,
@@ -19,10 +20,6 @@ function addMonths(date: Date, months: number): Date {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
   return result;
-}
-
-function intervalFromFrequency(frequency?: number): BillingInterval {
-  return frequency && frequency >= 12 ? 'YEARLY' : 'MONTHLY';
 }
 
 /** Estados de pago de Mercado Pago que consideramos un cobro fallido. */
@@ -78,51 +75,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true });
       }
 
-      const statusMap: Record<string, 'ACTIVE' | 'CANCELED' | 'PAST_DUE'> = {
-        authorized: 'ACTIVE',
-        cancelled: 'CANCELED',
-        paused: 'PAST_DUE',
-      };
-
-      const mappedStatus = preapproval.status
-        ? statusMap[preapproval.status]
-        : undefined;
-
-      const interval = intervalFromFrequency(
-        preapproval.auto_recurring?.frequency
-      );
-
-      const now = new Date();
-      const wasPastDue = subscription?.status === 'PAST_DUE';
-      const startsFailing = mappedStatus === 'PAST_DUE' && !wasPastDue;
-
-      await prisma.subscription.update({
-        where: { organizationId },
-        data: {
-          interval,
-          mercadoPagoSubscriptionId: preapproval.id ?? undefined,
-          mercadoPagoCustomerId: preapproval.payer_id
-            ? String(preapproval.payer_id)
-            : undefined,
-          ...(mappedStatus ? { status: mappedStatus } : {}),
-          ...(startsFailing ? { paymentFailedAt: now } : {}),
-          ...(mappedStatus === 'ACTIVE'
-            ? {
-                currentPeriodStart: now,
-                currentPeriodEnd: addMonths(now, getIntervalMonths(interval)),
-                paymentFailedAt: null,
-              }
-            : {}),
-        },
+      await applyPreapproval({
+        organizationId,
+        preapproval,
+        currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+        wasPastDue: subscription?.status === 'PAST_DUE',
       });
-
-      if (startsFailing) {
-        await notifyPaymentFailed({
-          organizationId,
-          currentPeriodEnd: subscription?.currentPeriodEnd ?? now,
-          reason: `preapproval_${preapproval.status}`,
-        });
-      }
 
       console.log(
         `Preapproval ${preapproval.status} for org ${organizationId}`

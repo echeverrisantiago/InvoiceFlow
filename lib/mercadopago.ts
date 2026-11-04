@@ -51,7 +51,7 @@ export async function createPreapproval({
       //payer_email: email,
       // #TODO TEMPORAL (solo pruebas): email del test user Buyer. Revertir a `payer_email: email`.
       payer_email: "test_user_9179256862855185971@testuser.com",
-      back_url: `${appUrl}/dashboard/settings/billing`,
+      back_url: `${appUrl}/dashboard/settings/billing?checkout=return`,
       status: 'pending',
       auto_recurring: {
         frequency,
