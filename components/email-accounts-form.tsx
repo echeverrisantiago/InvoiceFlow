@@ -8,6 +8,7 @@ import {
   Mail,
   AlertTriangle,
   RefreshCw,
+  LogOut,
 } from 'lucide-react';
 
 interface EmailAccount {
@@ -96,28 +97,30 @@ export function EmailAccountsForm({
     handleOAuthConnect('gmail');
   }
 
-  async function handleDelete(id: string) {
-    const ok = confirm(
-      '¿Estás seguro de eliminar esta cuenta de email? La vista previa y el archivo de las facturas importadas desde este correo ya no estarán disponibles.'
-    );
-    if (!ok) return;
+  async function changeAccountState(id: string, permanent: boolean) {
+    const message = permanent
+      ? '¿Eliminar definitivamente esta cuenta? Las facturas importadas desde este correo perderán la vista previa.'
+      : '¿Desconectar esta cuenta? Dejará de sincronizar, pero podrás reconectarla sin perder tus facturas.';
+
+    if (!confirm(message)) return;
 
     setDeletingId(id);
     setError('');
     setSuccess('');
 
     try {
-      const res = await fetch(`/api/email-accounts/${id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(
+        `/api/email-accounts/${id}${permanent ? '?permanent=1' : ''}`,
+        { method: 'DELETE' }
+      );
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || 'Error al eliminar');
+        setError(data.error || 'Error al actualizar la cuenta');
         return;
       }
 
-      setSuccess('Cuenta eliminada');
+      setSuccess(permanent ? 'Cuenta eliminada' : 'Cuenta desconectada');
       loadAccounts();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error de conexión');
@@ -134,14 +137,15 @@ export function EmailAccountsForm({
     );
   }
 
-  const atLimit = accounts.length >= maxAccounts;
+  const activeCount = accounts.filter((account) => account.isActive).length;
+  const atLimit = activeCount >= maxAccounts;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between text-sm">
         <span className="font-medium">Correos sincronizados</span>
         <span className="text-muted-foreground">
-          {accounts.length} de {maxAccounts}
+          {activeCount} de {maxAccounts}
         </span>
       </div>
 
@@ -181,7 +185,7 @@ export function EmailAccountsForm({
                       </span>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                        Inactiva
+                        Desconectada
                       </span>
                     )}
                   </div>
@@ -229,19 +233,47 @@ export function EmailAccountsForm({
                 </div>
 
                 {isAdmin && (
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {account.isActive ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => changeAccountState(account.id, false)}
+                        disabled={deletingId === account.id}
+                      >
+                        {deletingId === account.id ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <LogOut className="mr-1 h-3 w-3" />
+                        )}
+                        Desconectar
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          handleOAuthConnect(
+                            account.provider === 'OUTLOOK'
+                              ? 'outlook'
+                              : 'gmail'
+                          )
+                        }
+                        disabled={connecting !== null}
+                      >
+                        <RefreshCw className="mr-1 h-3 w-3" />
+                        Reconectar
+                      </Button>
+                    )}
+
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => handleDelete(account.id)}
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => changeAccountState(account.id, true)}
                       disabled={deletingId === account.id}
                     >
-                      {deletingId === account.id ? (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3 w-3 mr-1" />
-                      )}
-                      Eliminar
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      Eliminar definitivamente
                     </Button>
                   </div>
                 )}

@@ -46,8 +46,23 @@ export async function GET(
     return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 });
   }
 
+  // Si la cuenta se desconectó/eliminó, la resolvemos por el correo de origen
+  // (snapshot) para no perder la vista previa.
+  let emailAccountId = invoice.emailAccountId;
+  if (!emailAccountId && invoice.emailAccountEmail) {
+    const account = await prisma.emailAccount.findFirst({
+      where: {
+        organizationId: context.organization.id,
+        email: invoice.emailAccountEmail,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    emailAccountId = account?.id ?? null;
+  }
+
   // Manual uploads are stored in the (private) `invoices` bucket.
-  if (invoice.source !== 'EMAIL' || !invoice.emailAccountId || !invoice.messageId) {
+  if (invoice.source !== 'EMAIL' || !emailAccountId || !invoice.messageId) {
     const storagePath = resolveInvoiceStoragePath(invoice);
     if (!storagePath) {
       return NextResponse.json(
@@ -92,7 +107,7 @@ export async function GET(
 
   try {
     const file = await getInvoiceFileFromEmail({
-      emailAccountId: invoice.emailAccountId,
+      emailAccountId,
       messageId: invoice.messageId,
       attachmentFilename: invoice.attachmentFilename,
     });

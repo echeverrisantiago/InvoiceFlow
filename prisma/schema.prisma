@@ -143,6 +143,8 @@ model Invoice {
 
   // Email source (preview fetched live from the inbox when set)
   emailAccountId     String?
+  // Snapshot del correo de origen: sobrevive aunque se elimine la cuenta.
+  emailAccountEmail  String?
   // Id del mensaje en la API del proveedor (Gmail o Microsoft Graph).
   messageId          String?
   attachmentFilename String?

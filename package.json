@@ -15,6 +15,7 @@
     "storage:private": "node scripts/set-invoices-bucket-private.mjs",
     "legal:hash": "node scripts/legal-hash.mjs",
     "normalize:items": "node scripts/normalize-invoice-items.mjs",
+    "relink:invoices": "node scripts/relink-email-invoices.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -9,10 +9,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    await prisma.emailAccount.deleteMany({
+    // Desactivar (no borrar) para conservar el vínculo con las facturas.
+    await prisma.emailAccount.updateMany({
       where: {
         organizationId: context.organization.id,
         provider: { in: ['GMAIL', 'OUTLOOK'] },
+      },
+      data: {
+        isActive: false,
+        needsReconnect: false,
+        lastError: null,
+        lastErrorAt: null,
       },
     });
 

@@ -71,13 +71,23 @@ export async function runInvoiceExtraction(
   // in the private `invoices` bucket.
   let invoiceFile: { buffer: Buffer; mimeType: string; fileName: string } | null = null;
 
-  if (
-    invoice.source === 'EMAIL' &&
-    invoice.emailAccountId &&
-    invoice.messageId
-  ) {
+  // Si la cuenta original se eliminó, la resolvemos por el correo de origen.
+  let emailAccountId = invoice.emailAccountId;
+  if (!emailAccountId && invoice.emailAccountEmail) {
+    const account = await prisma.emailAccount.findFirst({
+      where: {
+        organizationId: invoice.organizationId,
+        email: invoice.emailAccountEmail,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    emailAccountId = account?.id ?? null;
+  }
+
+  if (invoice.source === 'EMAIL' && emailAccountId && invoice.messageId) {
     invoiceFile = await getInvoiceFileFromEmail({
-      emailAccountId: invoice.emailAccountId,
+      emailAccountId,
       messageId: invoice.messageId,
       attachmentFilename: invoice.attachmentFilename,
     });

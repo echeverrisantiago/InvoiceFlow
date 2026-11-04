@@ -39,6 +39,7 @@ export type EditableInvoice = {
     email: string;
     provider: 'GMAIL' | 'OUTLOOK';
   } | null;
+  emailAccountEmail: string | null;
 };
 
 function isPdf(fileName: string, fileUrl: string) {
@@ -302,6 +303,22 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
     };
   }, [displayUrl, invoice.fileName]);
 
+  const originLabel = (() => {
+    if (invoice.source === 'MANUAL') return 'Carga manual';
+
+    const email = invoice.emailAccount?.email || invoice.emailAccountEmail;
+    if (!email) return 'Correo desconectado';
+
+    const provider =
+      invoice.emailAccount?.provider === 'GMAIL'
+        ? 'Gmail'
+        : invoice.emailAccount?.provider === 'OUTLOOK'
+          ? 'Outlook'
+          : 'Correo';
+
+    return `${provider} (${email})`;
+  })();
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-6">
@@ -543,13 +560,7 @@ export function InvoiceDetailForm({ invoice }: { invoice: EditableInvoice }) {
             </div>
             <div>
               <p className="text-muted-foreground">Origen de la factura</p>
-              <p className="font-medium">
-                {invoice.source === 'MANUAL'
-                  ? 'Carga manual'
-                  : invoice.emailAccount
-                    ? `${invoice.emailAccount.provider === 'GMAIL' ? 'Gmail' : 'Outlook'} (${invoice.emailAccount.email})`
-                    : 'Importada desde correo'}
-              </p>
+              <p className="font-medium">{originLabel}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Archivo</p>

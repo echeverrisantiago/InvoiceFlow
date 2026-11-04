@@ -80,6 +80,7 @@ export async function storeInvoiceFromAttachment({
         status: 'PROCESSING',
         paymentStatus: 'PENDING',
         emailAccountId: config.id,
+        emailAccountEmail: config.email,
         messageId,
         attachmentFilename: fileName,
       },
