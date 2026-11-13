@@ -8,7 +8,7 @@
  */
 
 export const LEGAL_EFFECTIVE_DATE = '2026-10-18';
-export const PRIVACY_EFFECTIVE_DATE = '2026-11-02';
+export const PRIVACY_EFFECTIVE_DATE = '2026-11-12';
 
 export const TERMS_VERSION = LEGAL_EFFECTIVE_DATE;
 export const PRIVACY_VERSION = PRIVACY_EFFECTIVE_DATE;
@@ -18,7 +18,7 @@ export const PRIVACY_VERSION = PRIVACY_EFFECTIVE_DATE;
 export const TERMS_HASH =
   '913be7f5af46003b52bd18b204cb7f575b97fc13c6ab11900460bed26b5aa8c8';
 export const PRIVACY_HASH =
-  '62042b28638df06297ddfabc7aa67b9afa998c42b19894d74938f4d2b83a448c';
+  'e530731ebda8d8f17d825e9aec32ed1ea3b77377a80a75297f94fee3b199e90b';
 
 export interface AcceptanceVersions {
   termsVersion: string;

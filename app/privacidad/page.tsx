@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     'Política de Privacidad y Tratamiento de Datos Personales de EntraFactura, conforme a la Ley 1581 de 2012 de Colombia.',
 };
 
-const UPDATED_AT = '2 de noviembre de 2026';
+const UPDATED_AT = '12 de noviembre de 2026';
 const CONTACT_EMAIL = 'soporte@entrafactura.com';
 
 export default function PrivacidadPage() {
@@ -106,7 +106,9 @@ export default function PrivacidadPage() {
       </p>
       <ul>
         <li><strong>Supabase</strong> — autenticación, base de datos y almacenamiento.</li>
-        <li><strong>Groq</strong> — procesamiento con inteligencia artificial para extraer datos de facturas.</li>
+        <li><strong>OpenRouter</strong> — pasarela de acceso a modelos de inteligencia artificial que procesa y enruta las facturas (PDF e imágenes) hacia Google (Gemini).</li>
+        <li><strong>Google (Gemini)</strong> — procesamiento con inteligencia artificial para extraer datos de facturas (PDF e imágenes).</li>
+        <li><strong>Groq</strong> — procesamiento con inteligencia artificial de respaldo para extraer datos de facturas si el proveedor principal no está disponible.</li>
         <li><strong>SendGrid</strong> — envío de correos y alertas.</li>
         <li><strong>Google</strong> — acceso a Gmail, cuando lo autorizas.</li>
         <li><strong>Microsoft</strong> — acceso a Outlook, cuando lo autorizas.</li>

@@ -11,7 +11,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 
 - ✅ **Autenticación Multi-Tenant**: Sistema de organizaciones con roles (Admin/Member)
 - 📄 **Subida de Facturas**: Soporta PDF, imágenes, ZIP y XML (factura electrónica DIAN)
-- 🤖 **Extracción automática**: factura electrónica (ZIP/XML → UBL 2.1) sin IA, y PDF/imágenes con IA (Groq)
+- 🤖 **Extracción automática**: factura electrónica (ZIP/XML → UBL 2.1) sin IA, y PDF/imágenes con IA (Gemini 3.5 Flash vía OpenRouter, con Groq como respaldo)
 - ☁️ **Almacenamiento seguro**: facturas guardadas en Supabase Storage (bucket privado, URLs firmadas)
 - 📊 **Dashboard Inteligente**: Visualiza facturas, proveedores y resúmenes mensuales
 - 🔔 **Alertas de Vencimiento**: Notificaciones por email con SendGrid
@@ -25,7 +25,7 @@ Sistema de gestión inteligente de facturas dirigido a PYMEs en Colombia con ext
 - **Database**: PostgreSQL (Supabase) con Prisma ORM
 - **Auth**: Supabase Auth (sesiones con cookies SSR)
 - **Storage**: Supabase Storage
-- **IA**: Groq (LangChain.js) con llama-3.3-70b-versatile
+- **IA**: OpenRouter (Gemini 3.5 Flash), con Groq como respaldo
 - **Emails**: SendGrid
 - **Payments**: Mercado Pago
 - **Deployment**: Vercel
@@ -48,7 +48,9 @@ Flujo completo de una factura, desde que entra (carga manual o correo) hasta que
 - Node.js 18+
 - npm o yarn
 - Cuenta de Supabase (https://supabase.com)
-- Cuenta de Groq API (https://console.groq.com)
+- Cuenta de OpenRouter (https://openrouter.ai) con créditos
+- (Opcional) Cuenta de Google AI Studio / Gemini API para usar `AI_PROVIDER=gemini`
+- (Opcional) Cuenta de Groq API como respaldo (https://console.groq.com)
 - Cuenta de SendGrid (https://sendgrid.com)
 - Cuenta de Mercado Pago para Desarrolladores (https://www.mercadopago.com.co/developers)
 - Proyecto en Google Cloud Console (para la Gmail API)
@@ -96,15 +98,31 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-west-1.pooler.supabase.
 DIRECT_URL=postgresql://postgres:password@db.xxx.supabase.co:5432/postgres
 ```
 
-#### Groq AI
+#### IA (OpenRouter + Groq)
 
-1. Regístrate en https://console.groq.com
-2. Crea una API key en API Keys
-3. Agrégala a tu `.env.local`:
+1. Crea una cuenta y una API key en https://openrouter.ai/settings/keys.
+2. Recarga créditos (mínimo aproximado: USD 5–10) y agrégala a tu `.env.local`:
+
+```env
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=google/gemini-3.5-flash
+OPENROUTER_FALLBACK_MODELS=google/gemini-3.1-flash-lite
+AI_PROVIDER=openrouter
+```
+
+> En OpenRouter, desactiva los proveedores que entrenan con tus datos
+> (Settings → Privacy) para que las facturas no se usen para entrenamiento.
+
+3. **Opcional (respaldo)**: crea una API key en https://console.groq.com y agrégala:
 
 ```env
 GROQ_API_KEY=gsk_...
+GROQ_TEXT_MODEL=openai/gpt-oss-120b
+GROQ_VISION_MODEL=qwen/qwen3.8-27b
 ```
+
+4. **Alternativa**: para usar Gemini directo (requiere facturación de Google),
+configura `GEMINI_API_KEY` y `AI_PROVIDER=gemini`.
 
 #### SendGrid
 
@@ -227,7 +245,9 @@ EntraFactura/
 ├── lib/
 │   ├── supabase/           # Clientes de Supabase
 │   ├── prisma.ts           # Prisma client
-│   ├── ia.ts               # Extracción con Groq
+│   ├── ia.ts               # Extracción con OpenRouter (Groq de respaldo)
+│   ├── openrouter.ts       # Cliente REST de OpenRouter (PDF/imágenes nativos)
+│   ├── gemini.ts           # Cliente REST de Gemini (alternativa directa)
 │   ├── gmail.ts            # Gmail API (solo lectura)
 │   ├── graph.ts            # Microsoft Graph (solo lectura)
 │   ├── email-sync.ts       # Sincronización de correo (Gmail / Outlook)
@@ -272,11 +292,19 @@ EntraFactura/
 
 ## 🤖 Extracción con IA
 
-Usa dos modelos de Groq (`GROQ_TEXT_MODEL` y `GROQ_VISION_MODEL`):
+Usa **OpenRouter** con **Gemini 3.5 Flash** como proveedor principal
+(`AI_PROVIDER=openrouter`) y **Groq** como respaldo automático si OpenRouter
+falla:
 
-- **PDFs**: se extrae el texto con `unpdf` y se envía al modelo de texto.
-- **Imágenes** (JPG/PNG): van directamente al modelo de visión.
-- **Facturas electrónicas DIAN** (ZIP/XML): se parsean sin IA.
+- **PDFs**: se envían completos a OpenRouter (`file`), que los reenvía de forma
+  nativa a Gemini, incluso si son escaneos sin texto extraíble. Si el PDF supera
+  el límite inline (15 MB), se extrae el texto con `unpdf`.
+- **Imágenes** (JPG/PNG): van directamente a OpenRouter (`image_url`).
+- **Facturas electrónicas DIAN** (ZIP/XML): se parsean sin IA. Si el XML trae
+  total 0 (Movistar y otros), se leen los montos del PDF con IA y se conservan
+  las fechas/NIT del XML.
+- **Respaldo**: si OpenRouter falla (402, 429, 5xx, timeout), se intenta Groq
+  con los modelos `GROQ_TEXT_MODEL` / `GROQ_VISION_MODEL`.
 
 Antes de extraer, el modelo **clasifica el documento** en la misma llamada
 (`isInvoice` / `documentType`). Si no es una factura (publicidad, encuesta,
@@ -323,7 +351,7 @@ importación es idempotente por `messageId` + adjunto.
 
 ### Reintentos de extracción
 
-Cuando la IA falla por un error transitorio (cuota de Groq, HTTP 429):
+Cuando la IA falla por un error transitorio (cuota o HTTP 429/5xx de OpenRouter o Groq):
 
 - Si el `retry-after` es corto (límite por minuto), se espera y se reintenta
   dentro de la misma petición (máx. 25 s).
@@ -626,9 +654,33 @@ npx prisma generate
 
 Verifica que las URLs de DATABASE_URL y DIRECT_URL sean correctas en `.env.local`.
 
+### OpenRouter retorna error 402 o "insufficient credits"
+
+Recarga créditos en https://openrouter.ai/settings/credits. Sin saldo, todas las
+peticiones fallan y la factura queda para reintento.
+
+### OpenRouter retorna error 404
+
+El modelo configurado ya no existe. Actualiza `OPENROUTER_MODEL` o deja que use
+`OPENROUTER_FALLBACK_MODELS`. Para ver los disponibles:
+
+```bash
+curl "https://openrouter.ai/api/v1/models"
+```
+
+### OpenRouter retorna error 401
+
+Verifica que `OPENROUTER_API_KEY` sea válida y no tenga espacios.
+
+### Gemini directo retorna error 404 / 403 (solo con `AI_PROVIDER=gemini`)
+
+Actualiza `GEMINI_MODEL` / `GEMINI_FALLBACK_MODELS` o revisa el saldo y la
+facturación en https://aistudio.google.com/billing.
+
 ### Groq API retorna error 401
 
-Verifica que tu GROQ_API_KEY sea válida y tenga créditos disponibles.
+Verifica que tu GROQ_API_KEY sea válida y tenga créditos disponibles. Groq es
+solo el respaldo: si falla, la extracción sigue funcionando con OpenRouter.
 
 ### Emails no se envían
 

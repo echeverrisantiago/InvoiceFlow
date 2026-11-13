@@ -104,4 +104,24 @@ describe('normalizeInvoiceData', () => {
     expect(data.total).toBe(1500);
     expect(data.iva).toBe(0);
   });
+
+  it('limpia el NIT (puntos y guiones)', () => {
+    const data = normalizeInvoiceData({
+      supplier: 'Proveedor',
+      supplierNit: '900.123.456-7',
+      total: 1000,
+    } as any);
+
+    expect(data.supplierNit).toBe('9001234567');
+  });
+
+  it('respeta identificaciones alfanuméricas', () => {
+    const data = normalizeInvoiceData({
+      supplier: 'Proveedor',
+      supplierNit: 'RFC ABC123',
+      total: 1000,
+    } as any);
+
+    expect(data.supplierNit).toBe('RFC ABC123');
+  });
 });

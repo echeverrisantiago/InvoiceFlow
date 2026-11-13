@@ -4,6 +4,9 @@ import { prisma } from '@/lib/prisma';
 import { enforceRateLimit, extractOrgLimiter } from '@/lib/ratelimit';
 import { runInvoiceExtraction } from '@/lib/invoice-extraction';
 
+// La extracción con Gemini puede tardar en PDFs escaneados de varias páginas.
+export const maxDuration = 120;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

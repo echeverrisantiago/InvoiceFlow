@@ -14,6 +14,16 @@ import type { InvoiceData, InvoiceLineItem } from '@/types';
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+/** NIT limpio: solo dígitos y dígito de verificación (sin puntos ni guiones). */
+function normalizeNit(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  // Respeta identificaciones alfanuméricas (proveedores extranjeros).
+  if (/[A-Za-z]/.test(trimmed)) return trimmed;
+  return trimmed.replace(/\D/g, '') || trimmed;
+}
+
 function toNumber(value: unknown): number | null {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -61,5 +71,11 @@ export function normalizeInvoiceData<T extends Partial<InvoiceData>>(data: T): T
     iva = round2(Math.max(0, total - subtotal));
   }
 
-  return { ...data, items, subtotal, iva, total } as T;
+  const result: any = { ...data, items, subtotal, iva, total };
+  const supplierNit = normalizeNit(
+    (data as Record<string, unknown>).supplierNit
+  );
+  if (supplierNit !== undefined) result.supplierNit = supplierNit;
+
+  return result as T;
 }

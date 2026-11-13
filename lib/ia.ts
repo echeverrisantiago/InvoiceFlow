@@ -9,21 +9,52 @@ import {
 } from '@/lib/file-types';
 import { parseExtractionResponse } from '@/lib/extraction-parse';
 import { normalizeInvoiceData } from '@/lib/invoice-normalize';
+import {
+  GeminiError,
+  generateGeminiContent,
+  geminiMimeType,
+  isGeminiConfigured,
+  type GeminiPart,
+} from '@/lib/gemini';
+import {
+  OpenRouterError,
+  generateOpenRouterContent,
+  isOpenRouterConfigured,
+  type OpenRouterPart,
+} from '@/lib/openrouter';
 
-const visionModel = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY!,
-  model: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b',
-  temperature: 0,
-  // El plan gratuito rechaza peticiones con salida esperada > 1000 tokens/min.
-  maxTokens: 900,
-});
+/** Límite de la API para adjuntar un archivo inline (base64 incluido). */
+const MAX_INLINE_BYTES = 14 * 1024 * 1024;
 
-const textModel = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY!,
-  model: process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b',
-  temperature: 0,
-  maxTokens: 2000,
-});
+let visionModel: ChatGroq | null = null;
+let textModel: ChatGroq | null = null;
+
+// Los clientes se crean bajo demanda: así la app funciona solo con Gemini y
+// no falla al importar el módulo si GROQ_API_KEY no está definida.
+function getVisionModel(): ChatGroq {
+  if (!visionModel) {
+    visionModel = new ChatGroq({
+      apiKey: process.env.GROQ_API_KEY!,
+      model: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b',
+      temperature: 0,
+      // El plan gratuito rechaza peticiones con salida esperada > 1000 tokens/min.
+      maxTokens: 900,
+    });
+  }
+  return visionModel;
+}
+
+function getTextModel(): ChatGroq {
+  if (!textModel) {
+    textModel = new ChatGroq({
+      apiKey: process.env.GROQ_API_KEY!,
+      model: process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b',
+      temperature: 0,
+      maxTokens: 2000,
+    });
+  }
+  return textModel;
+}
 
 /**
  * Reintento inmediato ante límites de tasa de Groq (429).
@@ -90,25 +121,25 @@ async function invokeWithRateLimitRetry<T>(invoke: () => Promise<T>): Promise<T>
   }
 }
 
-const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de facturas colombianas. Analiza el documento proporcionado y responde SOLO con este JSON:
+const EXTRACTION_PROMPT = `Eres un asistente experto en extraer información de facturas colombianas. Analiza el documento proporcionado (PDF o imagen) y responde SOLO con este JSON:
 
 {
-  "isInvoice": true o false,
-  "documentType": "FACTURA" | "EXTRACTO" | "PUBLICIDAD" | "ENCUESTA" | "OTRO",
+  "isInvoice": true,
+  "documentType": "FACTURA",
   "supplier": "Nombre del proveedor/emisor",
   "supplierNit": "NIT del proveedor (solo números y dígito de verificación)",
   "issueDate": "Fecha de emisión (formato ISO: YYYY-MM-DD)",
   "dueDate": "Fecha de vencimiento (formato ISO: YYYY-MM-DD)",
-  "subtotal": monto subtotal (número sin símbolos),
-  "iva": monto IVA (número sin símbolos),
-  "total": monto total (número sin símbolos),
+  "subtotal": 0,
+  "iva": 0,
+  "total": 0,
   "description": "Descripción breve de los productos/servicios",
   "items": [
     {
       "description": "Nombre del producto o servicio",
-      "quantity": cantidad numérica o null,
-      "unitPrice": precio unitario numérico o null,
-      "total": valor total de la línea numérico o null
+      "quantity": 1,
+      "unitPrice": 0,
+      "total": 0
     }
   ]
 }
@@ -141,6 +172,8 @@ Responde SOLO con el JSON, sin texto adicional.`;
 interface ElectronicInvoiceOutcome {
   data?: InvoiceData;
   pdfBuffer?: Buffer;
+  /** Metadatos del XML cuando hay que leer los montos del PDF (total 0). */
+  xmlMetadata?: InvoiceData;
   xmlText?: string;
   error?: string;
 }
@@ -161,9 +194,10 @@ async function tryElectronicInvoice(
   if (isZipFile(contentType, fileName)) {
     const result = parseInvoiceFromZip(buffer);
 
-    // El XML no trae los cobros (total 0): se usa el PDF como fuente real.
+    // El XML no trae los cobros (total 0): se usa el PDF como fuente real,
+    // pero se conservan los metadatos fiables del XML (fechas, NIT...).
     if (result.pdf && shouldUsePdfFallback(result.data ?? null, true)) {
-      return { pdfBuffer: result.pdf.buffer };
+      return { pdfBuffer: result.pdf.buffer, xmlMetadata: result.data };
     }
 
     if (result.data) {
@@ -188,6 +222,297 @@ async function tryElectronicInvoice(
   }
 
   return { error: 'Formato de factura electrónica no reconocido.' };
+}
+
+interface ExtractionInput {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+  isPdf: boolean;
+  /** Texto ya extraído (XML crudo, o PDF que no se puede enviar inline). */
+  preExtractedText?: string;
+}
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { extractText } = await import('unpdf');
+  const { text } = await extractText(new Uint8Array(buffer));
+  return (Array.isArray(text) ? text.join('\n') : String(text)).trim();
+}
+
+async function extractWithGemini(input: ExtractionInput): Promise<string> {
+  const parts: GeminiPart[] = [{ text: EXTRACTION_PROMPT }];
+
+  if (input.preExtractedText) {
+    parts.push({
+      text: `Contenido del documento:\n${input.preExtractedText}`,
+    });
+    return generateGeminiContent(parts);
+  }
+
+  // PDF pequeño: se envía completo. Gemini lo lee de forma nativa, incluso si
+  // es un escaneo sin texto extraíble.
+  if (input.isPdf && input.buffer.length <= MAX_INLINE_BYTES) {
+    parts.push({
+      inlineData: {
+        mimeType: 'application/pdf',
+        data: input.buffer.toString('base64'),
+      },
+    });
+    return generateGeminiContent(parts);
+  }
+
+  // PDF demasiado grande para inline: se envía el texto extraído.
+  if (input.isPdf) {
+    const pdfText = await extractPdfText(input.buffer);
+    if (!pdfText) {
+      throw new Error(
+        'El PDF es demasiado grande y no contiene texto extraíble'
+      );
+    }
+    parts.push({
+      text: `Contenido del documento:\n${pdfText.slice(0, 100_000)}`,
+    });
+    return generateGeminiContent(parts);
+  }
+
+  parts.push({
+    inlineData: {
+      mimeType: geminiMimeType(input.contentType, input.fileName),
+      data: input.buffer.toString('base64'),
+    },
+  });
+  return generateGeminiContent(parts);
+}
+
+async function extractWithOpenRouter(
+  input: ExtractionInput
+): Promise<string> {
+  const parts: OpenRouterPart[] = [{ text: EXTRACTION_PROMPT }];
+
+  if (input.preExtractedText) {
+    parts.push({
+      text: `Contenido del documento:\n${input.preExtractedText}`,
+    });
+    return generateOpenRouterContent(parts);
+  }
+
+  // PDF pequeño: OpenRouter reenvía el archivo de forma nativa a Gemini,
+  // incluso si es un escaneo sin texto extraíble.
+  if (input.isPdf && input.buffer.length <= MAX_INLINE_BYTES) {
+    parts.push({
+      inlineData: {
+        mimeType: 'application/pdf',
+        data: input.buffer.toString('base64'),
+      },
+    });
+    return generateOpenRouterContent(parts);
+  }
+
+  // PDF demasiado grande para inline: se envía el texto extraído.
+  if (input.isPdf) {
+    const pdfText = await extractPdfText(input.buffer);
+    if (!pdfText) {
+      throw new Error(
+        'El PDF es demasiado grande y no contiene texto extraíble'
+      );
+    }
+    parts.push({
+      text: `Contenido del documento:\n${pdfText.slice(0, 100_000)}`,
+    });
+    return generateOpenRouterContent(parts);
+  }
+
+  parts.push({
+    inlineData: {
+      mimeType: geminiMimeType(input.contentType, input.fileName),
+      data: input.buffer.toString('base64'),
+    },
+  });
+  return generateOpenRouterContent(parts);
+}
+
+async function extractWithGroq(input: ExtractionInput): Promise<string> {
+  if (input.isPdf || input.preExtractedText) {
+    let pdfText: string;
+
+    if (input.preExtractedText) {
+      pdfText = input.preExtractedText;
+    } else {
+      try {
+        pdfText = await extractPdfText(input.buffer);
+      } catch (pdfError: any) {
+        throw new Error(`Error al leer PDF: ${pdfError.message}`);
+      }
+
+      if (!pdfText) {
+        throw new Error(
+          'El PDF no contiene texto extraíble (puede ser una imagen escaneada)'
+        );
+      }
+    }
+
+    const message = new HumanMessage(
+      `${EXTRACTION_PROMPT}\n\nContenido del documento:\n${pdfText.slice(0, 8000)}`
+    );
+    const result = await invokeWithRateLimitRetry(() =>
+      getTextModel().invoke([message])
+    );
+    return result.content.toString();
+  }
+
+  const base64 = input.buffer.toString('base64');
+  const mimeType = geminiMimeType(input.contentType, input.fileName);
+  const message = new HumanMessage({
+    content: [
+      { type: 'text', text: EXTRACTION_PROMPT },
+      {
+        type: 'image_url',
+        image_url: { url: `data:${mimeType};base64,${base64}` },
+      },
+    ],
+  });
+  const result = await invokeWithRateLimitRetry(() =>
+    getVisionModel().invoke([message])
+  );
+  return result.content.toString();
+}
+
+type AiProvider = 'openrouter' | 'gemini' | 'groq';
+
+/**
+ * Proveedor primario. OpenRouter lee PDFs e imágenes nativamente (los reenvía
+ * a Gemini); Groq queda como respaldo y Gemini sigue disponible con
+ * `AI_PROVIDER=gemini`.
+ */
+function resolveProvider(): AiProvider {
+  const configured = (process.env.AI_PROVIDER || '').toLowerCase().trim();
+
+  if (configured === 'groq') return 'groq';
+  if (configured === 'gemini') {
+    return isGeminiConfigured() ? 'gemini' : 'groq';
+  }
+  if (configured === 'openrouter') {
+    if (isOpenRouterConfigured()) return 'openrouter';
+
+    // En producción no se cae a Gemini en silencio: si falta la key, la
+    // extracción debe fallar de forma visible (y reintentarse).
+    if (process.env.NODE_ENV !== 'production' && isGeminiConfigured()) {
+      console.warn(
+        '[ia] AI_PROVIDER=openrouter pero falta OPENROUTER_API_KEY; usando Gemini en desarrollo.'
+      );
+      return 'gemini';
+    }
+    return 'groq';
+  }
+
+  // Sin AI_PROVIDER: OpenRouter si está configurado, luego Gemini, luego Groq.
+  if (isOpenRouterConfigured()) return 'openrouter';
+  return isGeminiConfigured() ? 'gemini' : 'groq';
+}
+
+async function extractWithProviderChain(
+  input: ExtractionInput
+): Promise<string> {
+  const configuredProvider = (process.env.AI_PROVIDER || '')
+    .toLowerCase()
+    .trim();
+
+  if (
+    configuredProvider === 'openrouter' &&
+    process.env.NODE_ENV === 'production' &&
+    !isOpenRouterConfigured()
+  ) {
+    throw new Error(
+      'Falta OPENROUTER_API_KEY (AI_PROVIDER=openrouter) en producción'
+    );
+  }
+
+  const provider = resolveProvider();
+
+  if (provider === 'groq') {
+    if (!process.env.GROQ_API_KEY?.trim()) {
+      throw new Error(
+        'No hay proveedor de IA configurado (OPENROUTER_API_KEY, GEMINI_API_KEY o GROQ_API_KEY)'
+      );
+    }
+    return extractWithGroq(input);
+  }
+
+  const extractPrimary =
+    provider === 'openrouter' ? extractWithOpenRouter : extractWithGemini;
+  const primaryName = provider === 'openrouter' ? 'OpenRouter' : 'Gemini';
+
+  try {
+    return await extractPrimary(input);
+  } catch (error) {
+    const canFallback = Boolean(process.env.GROQ_API_KEY?.trim());
+    if (!canFallback) throw error;
+
+    console.warn(
+      `[ia] ${primaryName} falló (${errorMessage(error)}). Usando Groq como respaldo.`
+    );
+
+    try {
+      return await extractWithGroq(input);
+    } catch (fallbackError) {
+      // Si el fallo del proveedor principal era transitorio (429, 5xx,
+      // timeout), se conserva esa señal para que el cron reintente la factura.
+      const primaryWasRetryable =
+        (provider === 'openrouter' &&
+          error instanceof OpenRouterError &&
+          error.retryable) ||
+        (provider === 'gemini' &&
+          error instanceof GeminiError &&
+          error.retryable);
+
+      if (primaryWasRetryable) {
+        console.error(`[ia] ${primaryName} y Groq fallaron.`, fallbackError);
+        throw error;
+      }
+      throw fallbackError;
+    }
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * El XML de una factura electrónica es fiable para metadatos (NIT, fechas),
+ * aunque su total venga en 0 y haya que leer los cobros del PDF. Se conservan
+ * esos campos y se dejan los montos/ítems que extrajo la IA.
+ */
+function mergeXmlMetadata(
+  data: InvoiceData,
+  xmlData?: InvoiceData
+): InvoiceData {
+  if (!xmlData) return data;
+
+  return {
+    ...data,
+    supplier: xmlData.supplier || data.supplier,
+    supplierNit: xmlData.supplierNit || data.supplierNit,
+    issueDate: xmlData.issueDate || data.issueDate,
+    dueDate: xmlData.dueDate || data.dueDate,
+    customerName: xmlData.customerName ?? data.customerName,
+    customerNit: xmlData.customerNit ?? data.customerNit,
+  };
+}
+
+function isRetryableAiError(error: unknown): boolean {
+  if (error instanceof OpenRouterError) return error.retryable;
+  if (error instanceof GeminiError) return error.retryable;
+  if (isRateLimitError(error)) return true;
+
+  const e = error as any;
+  const status = e?.status ?? e?.statusCode ?? e?.response?.status;
+  if (typeof status === 'number' && (status === 408 || status >= 500)) {
+    return true;
+  }
+
+  const code = e?.code ?? e?.cause?.code;
+  return code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ENOTFOUND';
 }
 
 export async function extractInvoiceData(
@@ -233,6 +558,7 @@ export async function extractInvoiceData(
 
     // Electronic invoicing: read the DIAN XML instead of using the AI.
     let preExtractedText: string | undefined;
+    let xmlData: InvoiceData | undefined;
     if (isElectronicInvoiceFile(contentType, fileName)) {
       const outcome = await tryElectronicInvoice(buffer, contentType, fileName);
 
@@ -250,6 +576,7 @@ export async function extractInvoiceData(
         buffer = outcome.pdfBuffer;
         contentType = 'application/pdf';
         isPdf = true;
+        xmlData = outcome.xmlMetadata;
       } else if (outcome.xmlText) {
         // Standalone XML that could not be parsed: let the text model try.
         preExtractedText = outcome.xmlText.slice(0, 8000);
@@ -261,44 +588,14 @@ export async function extractInvoiceData(
       }
     }
 
-    let result;
+    const content = await extractWithProviderChain({
+      buffer,
+      contentType,
+      fileName,
+      isPdf,
+      preExtractedText,
+    });
 
-    if (isPdf || preExtractedText) {
-      let pdfText: string;
-      if (preExtractedText) {
-        pdfText = preExtractedText;
-      } else {
-        const { extractText } = await import('unpdf');
-
-        try {
-          const { text } = await extractText(new Uint8Array(buffer));
-          pdfText = Array.isArray(text) ? text.join('\n').trim() : String(text).trim();
-        } catch (pdfError: any) {
-          return { success: false, error: `Error al leer PDF: ${pdfError.message}` };
-        }
-
-        if (!pdfText) {
-          return { success: false, error: 'El PDF no contiene texto extraíble (puede ser una imagen escaneada)' };
-        }
-      }
-
-      const message = new HumanMessage(
-        `${EXTRACTION_PROMPT}\n\nContenido del documento:\n${pdfText.slice(0, 8000)}`
-      );
-      result = await invokeWithRateLimitRetry(() => textModel.invoke([message]));
-    } else {
-      // Send image directly to vision model
-      const base64 = buffer.toString('base64');
-      const mimeType = contentType || 'image/jpeg';
-      const message = new HumanMessage({
-        content: [
-          { type: 'text', text: EXTRACTION_PROMPT },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-        ],
-      });
-      result = await invokeWithRateLimitRetry(() => visionModel.invoke([message]));
-    }
-    const content = result.content.toString();
     const parsed = parseExtractionResponse(content);
 
     if (parsed.kind === 'invalid') {
@@ -326,7 +623,7 @@ export async function extractInvoiceData(
       };
     }
 
-    const data = parsed.data;
+    const data = mergeXmlMetadata(parsed.data, xmlData);
 
     // Validate math (subtotal + iva ≈ total)
     if (data.subtotal && data.iva && data.total) {
@@ -357,7 +654,7 @@ export async function extractInvoiceData(
       success: false,
       error: error.message || 'Error al extraer datos con IA',
       rawResponse: error,
-      retryable: isRateLimitError(error),
+      retryable: isRetryableAiError(error),
     };
   }
 }
