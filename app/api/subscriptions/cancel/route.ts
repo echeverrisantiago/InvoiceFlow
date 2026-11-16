@@ -43,6 +43,9 @@ export async function POST() {
       data: {
         status: 'CANCELED',
         cancelAtPeriodEnd: true,
+        pendingPlan: null,
+        pendingInterval: null,
+        pendingEffectiveAt: null,
       },
     });
 

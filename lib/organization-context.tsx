@@ -21,6 +21,10 @@ export interface SubscriptionInfo {
   graceEndsAt: string | null;
   paymentFailedAt: string | null;
   requiresRenewal: boolean;
+  pendingPlan: string | null;
+  pendingInterval: string | null;
+  pendingEffectiveAt: string | null;
+  hasMercadoPagoSubscription: boolean;
 }
 
 export interface InvoiceQuotaInfo {

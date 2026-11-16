@@ -234,6 +234,11 @@ model Subscription {
   // Dunning: fecha del primer cobro fallido del episodio actual (null si al día)
   paymentFailedAt DateTime?
 
+  // Cambio de plan programado para el próximo cobro (sin prorrateo)
+  pendingPlan        SubscriptionPlan?
+  pendingInterval    BillingInterval?
+  pendingEffectiveAt DateTime?
+
   // Relations
   organizationId String       @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

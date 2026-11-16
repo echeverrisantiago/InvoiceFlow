@@ -111,14 +111,20 @@ export async function POST(request: NextRequest) {
         const baseDate = invoice.debit_date
           ? new Date(invoice.debit_date)
           : new Date();
-        const months = getIntervalMonths(
-          subscription.interval as BillingInterval
-        );
+        const nextPlan = subscription.pendingPlan ?? subscription.plan;
+        const nextInterval = (subscription.pendingInterval ??
+          subscription.interval) as BillingInterval;
+        const months = getIntervalMonths(nextInterval);
 
         await prisma.subscription.update({
           where: { id: subscription.id },
           data: {
             status: 'ACTIVE',
+            plan: nextPlan,
+            interval: nextInterval,
+            pendingPlan: null,
+            pendingInterval: null,
+            pendingEffectiveAt: null,
             currentPeriodStart: baseDate,
             currentPeriodEnd: addMonths(baseDate, months),
             paymentFailedAt: null,

@@ -15,6 +15,10 @@ export interface TenantSubscription {
   graceEndsAt: Date | null;
   paymentFailedAt: Date | null;
   requiresRenewal: boolean;
+  pendingPlan: string | null;
+  pendingInterval: string | null;
+  pendingEffectiveAt: Date | null;
+  hasMercadoPagoSubscription: boolean;
 }
 
 export interface TenantContext {
@@ -110,6 +114,12 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
       graceEndsAt: graceEnd,
       paymentFailedAt: subscription?.paymentFailedAt ?? null,
       requiresRenewal: !isActive,
+      pendingPlan: subscription?.pendingPlan ?? null,
+      pendingInterval: subscription?.pendingInterval ?? null,
+      pendingEffectiveAt: subscription?.pendingEffectiveAt ?? null,
+      hasMercadoPagoSubscription: Boolean(
+        subscription?.mercadoPagoSubscriptionId
+      ),
     },
   };
 });

@@ -44,6 +44,9 @@ export async function createPreapproval({
     const frequency = getIntervalMonths(interval);
     const intervalLabel = interval === 'YEARLY' ? 'Anual' : 'Mensual';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    // En modo pruebas usamos un test buyer. Al pasar a producción se usará
+    // `payer_email: email` en el cuerpo de la preapproval.
+    void email;
 
     const body = {
       reason: `Plan ${planDef.name} (${intervalLabel}) - EntraFactura`,
@@ -71,6 +74,41 @@ export async function createPreapproval({
   } catch (error: any) {
     console.error('Mercado Pago preapproval error:', error);
     throw new Error(`Error al crear la suscripción: ${error.message}`);
+  }
+}
+
+/**
+ * Update the amount and frequency of an existing pre-approval for the next
+ * recurring charge. Used for plan changes that take effect at renewal.
+ */
+export async function updatePreapproval({
+  id,
+  plan,
+  interval,
+}: {
+  id: string;
+  plan: PlanKey;
+  interval: BillingInterval;
+}) {
+  try {
+    const planDef = getPlanDefinition(plan);
+    const amount = getPlanPrice(planDef, interval);
+    const frequency = getIntervalMonths(interval);
+
+    return await preApprovalClient.update({
+      id,
+      body: {
+        auto_recurring: {
+          transaction_amount: amount,
+          currency_id: 'COP',
+          frequency,
+          frequency_type: 'months',
+        },
+      } as any,
+    });
+  } catch (error: any) {
+    console.error('Mercado Pago update preapproval error:', error);
+    throw new Error(`Error al actualizar la suscripción: ${error.message}`);
   }
 }
 

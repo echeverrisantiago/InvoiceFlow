@@ -27,6 +27,9 @@ export async function GET() {
       interval: true,
       currentPeriodEnd: true,
       paymentFailedAt: true,
+      pendingPlan: true,
+      pendingInterval: true,
+      pendingEffectiveAt: true,
     },
   });
 

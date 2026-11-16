@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,8 @@ export default function BillingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState<PlanKey | null>(null);
   const [canceling, setCanceling] = useState(false);
+  const [changingPlan, setChangingPlan] = useState<PlanKey | null>(null);
+  const [clearingPending, setClearingPending] = useState(false);
   const [interval, setInterval] = useState<BillingInterval>(DEFAULT_INTERVAL);
   const [notice, setNotice] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<
@@ -46,8 +48,38 @@ export default function BillingPage() {
   } | null>(null);
   const { subscription, refetch } = useOrganization();
 
-  const currentPlan = subscription?.plan as PlanKey | undefined;
+  const currentPlanKey =
+    (subscription?.plan as PlanKey | undefined) ?? undefined;
+  const currentInterval =
+    (subscription?.interval as BillingInterval | undefined) ?? undefined;
+  const pendingPlanKey =
+    (subscription?.pendingPlan as PlanKey | null) ?? null;
+  const pendingInterval =
+    (subscription?.pendingInterval as BillingInterval | null) ?? null;
   const isYearly = interval === 'YEARLY';
+
+  const status = subscription?.status;
+  const isActiveSub = status === 'ACTIVE';
+  const isTrialing = status === 'TRIALING' && Boolean(subscription?.isActive);
+  const isCanceled = status === 'CANCELED' && Boolean(subscription?.isActive);
+  const isPastDue = status === 'PAST_DUE' && Boolean(subscription?.isActive);
+  const canChangePlan =
+    isActiveSub && Boolean(subscription?.hasMercadoPagoSubscription);
+
+  const currentPlanDef = currentPlanKey ? PLANS[currentPlanKey] : null;
+  const currentPrice =
+    currentPlanDef && currentInterval
+      ? getPlanPrice(currentPlanDef, currentInterval)
+      : null;
+  const currentIntervalLabel =
+    currentInterval === 'YEARLY' ? 'año' : 'mes';
+  const pendingEffectiveAt =
+    subscription?.pendingEffectiveAt ??
+    subscription?.currentPeriodEnd ??
+    null;
+  const summaryDate = isPastDue
+    ? subscription?.graceEndsAt ?? subscription?.currentPeriodEnd ?? null
+    : subscription?.currentPeriodEnd ?? null;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -75,13 +107,14 @@ export default function BillingPage() {
     setCheckout('processing');
   }, []);
 
-  // Red de seguridad: si al entrar a facturación la suscripción no está activa,
-  // se sincroniza con Mercado Pago (por si el webhook se perdió).
+  // Al entrar a facturación sincronizamos una vez con Mercado Pago. Así se
+  // corrige el período si el webhook se perdió o si el cobro fue manual.
   const subscriptionLoaded = subscription !== null;
-  const subscriptionActive = subscription?.isActive ?? false;
+  const syncedRef = useRef(false);
 
   useEffect(() => {
-    if (!subscriptionLoaded || subscriptionActive) return;
+    if (!subscriptionLoaded || syncedRef.current) return;
+    syncedRef.current = true;
 
     let cancelled = false;
 
@@ -89,7 +122,19 @@ export default function BillingPage() {
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        if (data?.subscription?.status === 'ACTIVE') {
+        const next = data?.subscription;
+        if (!next) return;
+
+        const changed =
+          next.status !== subscription?.status ||
+          next.plan !== subscription?.plan ||
+          next.interval !== subscription?.interval ||
+          next.currentPeriodEnd !== subscription?.currentPeriodEnd ||
+          next.pendingPlan !== subscription?.pendingPlan ||
+          next.pendingInterval !== subscription?.pendingInterval ||
+          next.pendingEffectiveAt !== subscription?.pendingEffectiveAt;
+
+        if (changed) {
           refetch();
         }
       })
@@ -100,7 +145,7 @@ export default function BillingPage() {
     return () => {
       cancelled = true;
     };
-  }, [subscriptionLoaded, subscriptionActive, refetch]);
+  }, [subscriptionLoaded, subscription, refetch]);
 
   // Consulta el estado (sincronizando con Mercado Pago) hasta confirmar.
   useEffect(() => {
@@ -252,6 +297,78 @@ export default function BillingPage() {
     }
   };
 
+  const handleChangePlan = async (
+    plan: PlanKey,
+    nextInterval: BillingInterval
+  ) => {
+    const planName = PLANS[plan].name;
+    const intervalLabel = nextInterval === 'YEARLY' ? 'anual' : 'mensual';
+    const effectiveDate = subscription?.currentPeriodEnd
+      ? new Date(subscription.currentPeriodEnd).toLocaleDateString('es-CO')
+      : 'el próximo cobro';
+    const samePlan = plan === currentPlanKey;
+
+    const message = samePlan
+      ? `¿Cambiar tu plan a la modalidad ${intervalLabel}? Se aplicará el ${effectiveDate}.`
+      : `¿Cambiar al plan ${planName} (${intervalLabel})? Se aplicará el ${effectiveDate}. Conservas tu plan actual hasta esa fecha.`;
+
+    if (!confirm(message)) return;
+
+    setChangingPlan(plan);
+    try {
+      const response = await fetch('/api/subscriptions/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, interval: nextInterval }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cambiar de plan');
+      }
+
+      toast.success(
+        samePlan
+          ? `Cambio a modalidad ${intervalLabel} programado`
+          : `Cambio al plan ${planName} programado`
+      );
+      await refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Error al cambiar de plan');
+    } finally {
+      setChangingPlan(null);
+    }
+  };
+
+  const handleCancelPending = async () => {
+    if (!currentPlanKey || !currentInterval) return;
+    if (!confirm('¿Cancelar el cambio de plan programado?')) return;
+
+    setClearingPending(true);
+    try {
+      const response = await fetch('/api/subscriptions/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: currentPlanKey,
+          interval: currentInterval,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cancelar el cambio');
+      }
+
+      toast.success('Cambio de plan cancelado');
+      await refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Error al cancelar el cambio');
+    } finally {
+      setClearingPending(false);
+    }
+  };
+
   if (checkout !== 'idle') {
     const confirmedPlanName =
       confirmed?.plan && PLANS[confirmed.plan as PlanKey]
@@ -363,7 +480,17 @@ export default function BillingPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Facturación</h1>
         <p className="text-muted-foreground">
-          Elige el plan y la periodicidad que mejor se adapten a tu operación
+          {isActiveSub && currentPlanDef && currentPrice !== null
+            ? `Tu plan ${currentPlanDef.name} · ${formatCop(
+                currentPrice
+              )}/${currentIntervalLabel}`
+            : isTrialing
+              ? 'Estás en período de prueba. Elige un plan para continuar.'
+              : isCanceled
+                ? 'Tu suscripción está cancelada; conservas el acceso hasta el final del período.'
+                : isPastDue
+                  ? 'No pudimos cobrar tu último pago. Actualiza tu método de pago.'
+                  : 'Elige el plan y la periodicidad que mejor se adapten a tu operación'}
         </p>
       </div>
 
@@ -393,6 +520,153 @@ export default function BillingPage() {
           <p className="text-sm font-medium">{currentNotice.message}</p>
         </div>
       )}
+
+      {/* Resumen de la suscripción */}
+      {subscription &&
+        (isActiveSub || isTrialing || isCanceled || isPastDue) && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Tu suscripción</CardTitle>
+              <CardDescription>
+                {isActiveSub
+                  ? 'Activa'
+                  : isTrialing
+                    ? 'Período de prueba'
+                    : isCanceled
+                      ? 'Cancelada'
+                      : 'Pago pendiente'}
+                {currentPlanDef ? ` · Plan ${currentPlanDef.name}` : ''}
+                {currentPrice !== null
+                  ? ` · ${formatCop(currentPrice)}/${currentIntervalLabel}`
+                  : ''}
+                {summaryDate
+                  ? ` · ${
+                      isActiveSub
+                        ? 'próximo cobro'
+                        : isPastDue
+                          ? 'gracia hasta'
+                          : 'vigente hasta'
+                    } ${new Date(summaryDate).toLocaleDateString('es-CO')}`
+                  : ''}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {pendingPlanKey && (
+                <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between">
+                  <p>
+                    Cambio programado al plan{' '}
+                    <strong>{PLANS[pendingPlanKey].name}</strong>
+                    {pendingInterval
+                      ? ` (${
+                          pendingInterval === 'YEARLY' ? 'anual' : 'mensual'
+                        })`
+                      : ''}{' '}
+                    para el{' '}
+                    {pendingEffectiveAt
+                      ? new Date(pendingEffectiveAt).toLocaleDateString('es-CO')
+                      : 'próximo cobro'}
+                    .
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancelPending}
+                    disabled={
+                      clearingPending || loading !== null || canceling
+                    }
+                  >
+                    {clearingPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Cancelando...
+                      </>
+                    ) : (
+                      'Cancelar cambio'
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {isActiveSub && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Al cancelar dejarás de renovar automáticamente y conservarás
+                    el acceso hasta el final del período pagado.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="border-red-200 text-red-600 hover:bg-red-50"
+                    onClick={handleCancel}
+                    disabled={
+                      canceling || loading !== null || changingPlan !== null
+                    }
+                  >
+                    {canceling ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Cancelando...
+                      </>
+                    ) : (
+                      'Cancelar suscripción'
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {isCanceled && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Conservas el acceso hasta el final del período pagado. Para
+                    volver a renovar, elige un plan.
+                  </p>
+                  {currentPlanKey && (
+                    <Button
+                      onClick={() => handleSubscribe(currentPlanKey)}
+                      disabled={
+                        loading !== null ||
+                        canceling ||
+                        changingPlan !== null
+                      }
+                    >
+                      Reactivar
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {isPastDue && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    No pudimos cobrar tu suscripción. Actualiza tu método de
+                    pago para evitar la suspensión.
+                  </p>
+                  {currentPlanKey && (
+                    <Button
+                      onClick={() => handleSubscribe(currentPlanKey)}
+                      disabled={
+                        loading !== null ||
+                        canceling ||
+                        changingPlan !== null
+                      }
+                    >
+                      Actualizar pago
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {isTrialing && (
+                <p className="text-sm text-muted-foreground">
+                  Tu período de prueba termina el{' '}
+                  {summaryDate
+                    ? new Date(summaryDate).toLocaleDateString('es-CO')
+                    : 'próximamente'}
+                  . Elige un plan para continuar sin interrupciones.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Interval toggle */}
       <div className="flex justify-center">
@@ -431,15 +705,49 @@ export default function BillingPage() {
         </div>
       </div>
 
+      {isActiveSub && (
+        <p className="text-center text-xs text-muted-foreground">
+          El selector aplica a los planes a los que te cambies. Tu plan actual
+          mantiene su precio y periodicidad.
+        </p>
+      )}
+
       {/* Plans */}
       <div className="grid gap-6 md:grid-cols-3">
         {PLAN_KEYS.map((key) => {
           const plan = PLANS[key];
-          const isCurrent = currentPlan === key;
+          const isCurrentPlan = currentPlanKey === key;
+          const isCurrentSelection =
+            isCurrentPlan && currentInterval === interval;
+          const isPendingSelection =
+            pendingPlanKey === key && pendingInterval === interval;
           const isFeatured = key === 'PRO';
           const price = getPlanPrice(plan, interval);
           const monthlyEquivalent = Math.round(price / 12);
           const savings = getAnnualSavings(plan);
+          const intervalLabel = interval === 'YEARLY' ? 'año' : 'mes';
+          const isSamePlanDifferentInterval =
+            isCurrentPlan && !isCurrentSelection;
+
+          const badge =
+            isActiveSub && isCurrentPlan
+              ? 'Plan actual'
+              : isTrialing && isCurrentPlan
+                ? 'Plan de prueba'
+                : isCanceled && isCurrentPlan
+                  ? 'Cancelada'
+                  : isPastDue && isCurrentPlan
+                    ? 'Pago pendiente'
+                    : isPendingSelection
+                      ? 'Cambio programado'
+                      : null;
+
+          const badgeTone =
+            badge === 'Pago pendiente'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-400'
+              : badge === 'Cancelada'
+                ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-400'
+                : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400';
 
           return (
             <Card
@@ -447,11 +755,13 @@ export default function BillingPage() {
               className={isFeatured ? 'border-primary shadow-lg' : ''}
             >
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-xl">{plan.name}</CardTitle>
-                  {isCurrent && (
-                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-400">
-                      Plan actual
+                  {badge && (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeTone}`}
+                    >
+                      {badge}
                     </span>
                   )}
                 </div>
@@ -460,9 +770,9 @@ export default function BillingPage() {
                     {formatCop(price)}
                   </span>
                   <span className="text-muted-foreground">
-                    /{isYearly ? 'año' : 'mes'}
+                    /{intervalLabel}
                   </span>
-                  {isYearly && (
+                  {interval === 'YEARLY' && (
                     <span className="mt-1 block text-xs text-muted-foreground">
                       Equivale a {formatCop(monthlyEquivalent)}/mes · ahorras{' '}
                       {formatCop(savings)}
@@ -479,77 +789,156 @@ export default function BillingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button
-                  onClick={() => handleSubscribe(key)}
-                  disabled={loading !== null || canceling}
-                  className="w-full"
-                  variant={isFeatured ? 'default' : 'outline'}
-                  size="lg"
-                >
-                  {loading === key ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : isCurrent ? (
-                    `Renovar por ${formatCop(price)}/${isYearly ? 'año' : 'mes'}`
+
+                {isActiveSub ? (
+                  isCurrentSelection ? (
+                    <Button
+                      disabled
+                      className="w-full"
+                      variant={isFeatured ? 'default' : 'outline'}
+                      size="lg"
+                    >
+                      Plan actual
+                    </Button>
+                  ) : isPendingSelection ? (
+                    <Button
+                      disabled
+                      className="w-full"
+                      variant="outline"
+                      size="lg"
+                    >
+                      Cambio programado
+                    </Button>
+                  ) : canChangePlan ? (
+                    <Button
+                      onClick={() => handleChangePlan(key, interval)}
+                      disabled={
+                        loading !== null ||
+                        canceling ||
+                        changingPlan !== null ||
+                        clearingPending
+                      }
+                      className="w-full"
+                      variant={isFeatured ? 'default' : 'outline'}
+                      size="lg"
+                    >
+                      {changingPlan === key ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Programando...
+                        </>
+                      ) : isSamePlanDifferentInterval ? (
+                        `Cambiar a ${
+                          interval === 'YEARLY' ? 'anual' : 'mensual'
+                        }`
+                      ) : (
+                        `Cambiar a ${plan.name}`
+                      )}
+                    </Button>
                   ) : (
-                    `Suscribirse por ${formatCop(price)}/${isYearly ? 'año' : 'mes'}`
-                  )}
-                </Button>
+                    <Button
+                      disabled
+                      className="w-full"
+                      variant="outline"
+                      size="lg"
+                    >
+                      Contactar soporte
+                    </Button>
+                  )
+                ) : isTrialing ? (
+                  <Button
+                    onClick={() => handleSubscribe(key)}
+                    disabled={
+                      loading !== null ||
+                      canceling ||
+                      changingPlan !== null
+                    }
+                    className="w-full"
+                    variant={isFeatured ? 'default' : 'outline'}
+                    size="lg"
+                  >
+                    {loading === key ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      'Elegir este plan'
+                    )}
+                  </Button>
+                ) : isCanceled ? (
+                  <Button
+                    onClick={() => handleSubscribe(key)}
+                    disabled={
+                      loading !== null ||
+                      canceling ||
+                      changingPlan !== null
+                    }
+                    className="w-full"
+                    variant={isFeatured ? 'default' : 'outline'}
+                    size="lg"
+                  >
+                    {loading === key ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : isCurrentPlan ? (
+                      'Reactivar'
+                    ) : (
+                      'Elegir este plan'
+                    )}
+                  </Button>
+                ) : isPastDue ? (
+                  <Button
+                    onClick={() => handleSubscribe(key)}
+                    disabled={
+                      loading !== null ||
+                      canceling ||
+                      changingPlan !== null
+                    }
+                    className="w-full"
+                    variant={isFeatured ? 'default' : 'outline'}
+                    size="lg"
+                  >
+                    {loading === key ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : isCurrentPlan ? (
+                      'Actualizar pago'
+                    ) : (
+                      'Elegir este plan'
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => handleSubscribe(key)}
+                    disabled={
+                      loading !== null ||
+                      canceling ||
+                      changingPlan !== null
+                    }
+                    className="w-full"
+                    variant={isFeatured ? 'default' : 'outline'}
+                    size="lg"
+                  >
+                    {loading === key ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      `Comenzar por ${formatCop(price)}/${intervalLabel}`
+                    )}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           );
         })}
       </div>
-
-      {/* Current subscription management */}
-      {subscription && subscription.isActive && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tu suscripción</CardTitle>
-            <CardDescription>
-              Estado: {subscription.status.toLowerCase()}
-              {subscription.currentPeriodEnd
-                ? ` · vigente hasta ${new Date(
-                    subscription.currentPeriodEnd
-                  ).toLocaleDateString('es-CO')}`
-                : ''}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {subscription.status === 'CANCELED' ? (
-              <p className="text-sm text-muted-foreground">
-                Tu suscripción está cancelada. Conservas el acceso hasta el
-                final del período pagado. Puedes volver a suscribirte cuando
-                quieras.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Al cancelar, dejarás de renovar automáticamente y conservarás
-                  el acceso hasta el final del período pagado.
-                </p>
-                <Button
-                  variant="outline"
-                  className="text-red-600 border-red-200 hover:bg-red-50"
-                  onClick={handleCancel}
-                  disabled={canceling || loading !== null}
-                >
-                  {canceling ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Cancelando...
-                    </>
-                  ) : (
-                    'Cancelar suscripción'
-                  )}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* FAQ */}
       <Card>
@@ -567,8 +956,10 @@ export default function BillingPage() {
           <div>
             <h4 className="font-semibold mb-1">¿Puedo cambiar de plan o periodicidad?</h4>
             <p className="text-sm text-muted-foreground">
-              Sí. Al elegir otro plan o pasar de mensual a anual, se cancela la
-              suscripción actual y se crea una nueva con el cobro seleccionado.
+              Sí. El cambio se programa para el próximo cobro: conservas tu plan
+              actual hasta esa fecha y no hay cobros prorrateados. Si cambias de
+              opinión antes de la renovación, puedes volver a tu plan actual para
+              cancelar el cambio.
             </p>
           </div>
           <div>

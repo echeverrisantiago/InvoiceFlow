@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
         mercadoPagoCustomerId: preapproval.payer_id
           ? String(preapproval.payer_id)
           : undefined,
+        pendingPlan: null,
+        pendingInterval: null,
+        pendingEffectiveAt: null,
         ...(isTrialing ? { status: 'TRIALING' as const } : {}),
       },
       create: {
