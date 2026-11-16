@@ -111,9 +111,23 @@ export async function POST(request: NextRequest) {
         const baseDate = invoice.debit_date
           ? new Date(invoice.debit_date)
           : new Date();
-        const nextPlan = subscription.pendingPlan ?? subscription.plan;
-        const nextInterval = (subscription.pendingInterval ??
-          subscription.interval) as BillingInterval;
+        const pendingEffectiveAt = subscription.pendingEffectiveAt
+          ? new Date(subscription.pendingEffectiveAt)
+          : null;
+        // Solo aplicamos el cambio si el cobro corresponde al ciclo siguiente.
+        // Si Mercado Pago entrega tarde el cobro del ciclo actual, el cambio
+        // debe seguir pendiente para la próxima renovación.
+        const pendingApplies =
+          Boolean(subscription.pendingPlan) &&
+          (!pendingEffectiveAt ||
+            baseDate.getTime() >=
+              pendingEffectiveAt.getTime() - 24 * 60 * 60 * 1000);
+        const nextPlan = pendingApplies
+          ? subscription.pendingPlan!
+          : subscription.plan;
+        const nextInterval = (pendingApplies
+          ? subscription.pendingInterval ?? subscription.interval
+          : subscription.interval) as BillingInterval;
         const months = getIntervalMonths(nextInterval);
 
         await prisma.subscription.update({
@@ -122,16 +136,22 @@ export async function POST(request: NextRequest) {
             status: 'ACTIVE',
             plan: nextPlan,
             interval: nextInterval,
-            pendingPlan: null,
-            pendingInterval: null,
-            pendingEffectiveAt: null,
+            ...(pendingApplies
+              ? {
+                  pendingPlan: null,
+                  pendingInterval: null,
+                  pendingEffectiveAt: null,
+                }
+              : {}),
             currentPeriodStart: baseDate,
             currentPeriodEnd: addMonths(baseDate, months),
             paymentFailedAt: null,
           },
         });
 
-        console.log(`Subscription payment approved for org ${subscription.organizationId}`);
+        console.log(
+          `Subscription payment approved for org ${subscription.organizationId}`
+        );
       } else if (
         paymentStatus &&
         FAILED_PAYMENT_STATUSES.has(paymentStatus)
