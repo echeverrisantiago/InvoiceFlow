@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getInvoiceQuota } from '@/lib/plans';
 import {
   getAccessTokenForOAuth,
+  forceRefreshAccessToken,
   flagNeedsReconnect,
   selectInvoiceAttachments,
   inferMimeType,
@@ -38,7 +39,40 @@ export async function fetchNewGraphEmails(
       ],
     };
   }
-  const accessToken = tokenResult.accessToken;
+  let accessToken = tokenResult.accessToken;
+
+  /**
+   * Microsoft puede rechazar un access token antes de su vencimiento nominal
+   * (revocación, rotación, desfase). Se fuerza un refresh y se reintenta una
+   * vez; solo si eso falla se pide reconexión.
+   */
+  const withGraphAuthRetry = async <T>(
+    operation: (token: string) => Promise<T>
+  ): Promise<T> => {
+    try {
+      return await operation(accessToken);
+    } catch (error) {
+      if (!(error instanceof GraphApiError && error.canRetryWithRefresh)) {
+        throw error;
+      }
+
+      console.warn(
+        `[fetchNewGraphEmails] Token rechazado para ${config.email}; refrescando y reintentando.`
+      );
+      const refreshed = await forceRefreshAccessToken(config);
+      if (!refreshed.accessToken) {
+        // Si el refresh falló por autenticación, forceRefreshAccessToken ya
+        // marcó la cuenta y envió el aviso (si correspondía).
+        if (refreshed.needsReconnect) throw error;
+        throw new Error(
+          refreshed.error || 'No se pudo refrescar el token de Outlook'
+        );
+      }
+
+      accessToken = refreshed.accessToken;
+      return operation(accessToken);
+    }
+  };
 
   const organization = await prisma.organization.findUnique({
     where: { id: config.organizationId },
@@ -68,11 +102,13 @@ export async function fetchNewGraphEmails(
 
   try {
     // Graph devuelve los mensajes del más antiguo al más nuevo.
-    const messages = await listGraphMessages({
-      accessToken,
-      after,
-      limit: MAX_EMAILS_PER_RUN,
-    });
+    const messages = await withGraphAuthRetry((token) =>
+      listGraphMessages({
+        accessToken: token,
+        after,
+        limit: MAX_EMAILS_PER_RUN,
+      })
+    );
 
     console.log(
       `[fetchNewGraphEmails] ${messages.length} mensajes encontrados para ${config.email}.`
@@ -118,7 +154,9 @@ export async function fetchNewGraphEmails(
       }
 
       try {
-        const message = await getGraphMessage({ accessToken, messageId });
+        const message = await withGraphAuthRetry((token) =>
+          getGraphMessage({ accessToken: token, messageId })
+        );
         if (!message) {
           errors.push(`No se pudo obtener el mensaje ${messageId}`);
           continue;
@@ -174,8 +212,14 @@ export async function fetchNewGraphEmails(
       data: {
         ...(maxReceivedAt > 0 ? { lastEmailDate: new Date(maxReceivedAt) } : {}),
         lastCheckedAt: new Date(),
+        // Si la cuenta estaba marcada por un fallo transitorio anterior, un
+        // sync exitoso la deja sana y quita el banner sin esperar a reconectar.
+        needsReconnect: false,
+        lastError: null,
+        lastErrorAt: null,
       },
     });
+    config.needsReconnect = false;
 
     console.log(
       `[fetchNewGraphEmails] Completado para ${config.email}: ${processed} procesados, ${skipped} omitidos, ${errors.length} errores`

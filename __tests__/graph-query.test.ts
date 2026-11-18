@@ -33,4 +33,14 @@ describe('Microsoft Graph', () => {
     );
     expect(new GraphApiError('servidor', 500).isAuthError).toBe(false);
   });
+
+  it('solo reintenta con refresh ante un token inválido, no ante un 403', () => {
+    expect(new GraphApiError('token vencido', 401).canRetryWithRefresh).toBe(true);
+    expect(
+      new GraphApiError('token inválido', 500, 'InvalidAuthenticationToken')
+        .canRetryWithRefresh
+    ).toBe(true);
+    expect(new GraphApiError('sin permiso', 403).canRetryWithRefresh).toBe(false);
+    expect(new GraphApiError('servidor', 500).canRetryWithRefresh).toBe(false);
+  });
 });

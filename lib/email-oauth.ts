@@ -35,6 +35,12 @@ export async function getGmailTokensFromCode(code: string) {
 export interface TokenRefreshResult {
   accessToken: string | null;
   expiryDate: Date | null;
+  /**
+   * Microsoft rota el refresh token en cada refresh. Hay que guardar el nuevo;
+   * si se sigue usando el anterior, el siguiente refresh falla con
+   * `invalid_grant` / `AuthenticationException`.
+   */
+  refreshToken?: string | null;
   /** True when the refresh failed because access was revoked/expired. */
   isAuthError: boolean;
   error?: string;
@@ -50,6 +56,7 @@ export async function refreshGmailAccessToken(
     return {
       accessToken: credentials.access_token ?? null,
       expiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+      refreshToken: credentials.refresh_token ?? null,
       isAuthError: false,
     };
   } catch (error: any) {
@@ -166,6 +173,9 @@ export async function refreshOutlookAccessToken(
       expiryDate: data.expires_in
         ? new Date(Date.now() + data.expires_in * 1000)
         : null,
+      // Microsoft rota el refresh token: si no se guarda, el próximo refresh
+      // usa uno invalidado y la cuenta parece "desconectada".
+      refreshToken: data.refresh_token ?? null,
       isAuthError: false,
     };
   } catch (error: any) {

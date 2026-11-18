@@ -28,6 +28,15 @@ export class GraphApiError extends Error {
       this.code === 'ErrorAccessDenied'
     );
   }
+
+  /**
+   * Un 401 puede deberse a un token revocado antes de su vencimiento nominal:
+   * conviene forzar un refresh y reintentar antes de pedir reconexión.
+   * Un 403 es falta de permisos y no se arregla refrescando.
+   */
+  get canRetryWithRefresh(): boolean {
+    return this.status === 401 || this.code === 'InvalidAuthenticationToken';
+  }
 }
 
 export interface GraphAttachment {

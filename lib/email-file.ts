@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
-import { refreshGmailAccessToken, refreshOutlookAccessToken } from '@/lib/email-oauth';
+import {
+  refreshGmailAccessToken,
+  refreshOutlookAccessToken,
+  type TokenRefreshResult,
+} from '@/lib/email-oauth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { isXmlFileName, isZipFileName, looksLikeDianInvoiceXml } from '@/lib/file-types';
 import { getGmailMessage } from '@/lib/gmail';
@@ -65,6 +69,7 @@ export async function flagNeedsReconnect(
       lastErrorAt: new Date(),
     },
   });
+  config.needsReconnect = true;
 
   if (justFlagged) {
     try {
@@ -82,6 +87,126 @@ export async function flagNeedsReconnect(
   }
 
   return justFlagged;
+}
+
+const DEFINITIVE_AUTH_ERROR_PATTERN =
+  /invalid_grant|invalid_client|unauthorized_client|AADSTS(?:65001|70000|50173|70008|50020)/i;
+
+/**
+ * Errores que no se arreglan reintentando: el refresh token fue revocado,
+ * expiró o el cliente OAuth está mal configurado.
+ */
+function isDefinitiveAuthError(error: string | undefined): boolean {
+  return DEFINITIVE_AUTH_ERROR_PATTERN.test(error || '');
+}
+
+async function refreshWithRetry(
+  config: EmailAccountConfig,
+  refreshToken: string
+): Promise<TokenRefreshResult> {
+  const doRefresh = () =>
+    config.provider === 'GMAIL'
+      ? refreshGmailAccessToken(refreshToken)
+      : refreshOutlookAccessToken(refreshToken);
+
+  let result = await doRefresh();
+
+  // Microsoft a veces devuelve un error de autenticación transitorio
+  // (`AuthenticationException`) sin que el refresh token esté revocado. Se
+  // reintenta una vez antes de molestar al usuario con una reconexión.
+  if (
+    result.accessToken ||
+    !result.isAuthError ||
+    isDefinitiveAuthError(result.error)
+  ) {
+    return result;
+  }
+
+  console.warn(
+    `[email] Refresh de ${config.email} falló con un error no definitivo; reintentando una vez.`
+  );
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  result = await doRefresh();
+  return result;
+}
+
+async function persistRefreshedToken(
+  config: EmailAccountConfig,
+  result: TokenRefreshResult
+): Promise<void> {
+  if (!result.accessToken) return;
+
+  const encryptedAccessToken = encryptToken(result.accessToken);
+  const encryptedRefreshToken = result.refreshToken
+    ? encryptToken(result.refreshToken)
+    : undefined;
+
+  await prisma.emailAccount.update({
+    where: { id: config.id },
+    data: {
+      oauthAccessToken: encryptedAccessToken,
+      oauthTokenExpiry: result.expiryDate,
+      // Guardar el refresh token rotado es obligatorio con Microsoft: el
+      // anterior deja de ser válido cuando se emite uno nuevo.
+      ...(encryptedRefreshToken
+        ? { oauthRefreshToken: encryptedRefreshToken }
+        : {}),
+      needsReconnect: false,
+      lastError: null,
+      lastErrorAt: null,
+    },
+  });
+
+  config.oauthAccessToken = encryptedAccessToken;
+  config.oauthTokenExpiry = result.expiryDate;
+  if (encryptedRefreshToken) config.oauthRefreshToken = encryptedRefreshToken;
+  config.needsReconnect = false;
+}
+
+/**
+ * Fuerza un refresh del token, aunque la fecha de expiración almacenada diga
+ * que todavía es válido. Se usa cuando Microsoft Graph responde 401: el token
+ * puede haber sido revocado antes de su vencimiento nominal.
+ */
+export async function forceRefreshAccessToken(
+  config: EmailAccountConfig
+): Promise<AccessTokenResult> {
+  if (config.provider !== 'GMAIL' && config.provider !== 'OUTLOOK') {
+    return {
+      accessToken: null,
+      needsReconnect: false,
+      justFlagged: false,
+      error: 'Proveedor de correo no soportado',
+    };
+  }
+
+  if (!config.oauthRefreshToken) {
+    const error = 'No hay refresh token almacenado';
+    const justFlagged = await flagNeedsReconnect(config, error);
+    return { accessToken: null, needsReconnect: true, justFlagged, error };
+  }
+
+  const refreshToken = decryptToken(config.oauthRefreshToken);
+  const result = await refreshWithRetry(config, refreshToken);
+
+  if (result.accessToken) {
+    await persistRefreshedToken(config, result);
+    return { accessToken: result.accessToken, needsReconnect: false, justFlagged: false };
+  }
+
+  if (result.isAuthError) {
+    const error = result.error || 'Token revocado o caducado';
+    const justFlagged = await flagNeedsReconnect(config, error);
+    return { accessToken: null, needsReconnect: true, justFlagged, error };
+  }
+
+  // Transient (network) error: keep the previous state and do not alarm.
+  return {
+    accessToken: null,
+    needsReconnect: config.needsReconnect,
+    justFlagged: false,
+    error: result.error,
+  };
 }
 
 export async function getAccessTokenForOAuth(
@@ -111,39 +236,7 @@ export async function getAccessTokenForOAuth(
     };
   }
 
-  const refreshToken = decryptToken(config.oauthRefreshToken);
-  const result =
-    config.provider === 'GMAIL'
-      ? await refreshGmailAccessToken(refreshToken)
-      : await refreshOutlookAccessToken(refreshToken);
-
-  if (result.accessToken) {
-    await prisma.emailAccount.update({
-      where: { id: config.id },
-      data: {
-        oauthAccessToken: encryptToken(result.accessToken),
-        oauthTokenExpiry: result.expiryDate,
-        needsReconnect: false,
-        lastError: null,
-        lastErrorAt: null,
-      },
-    });
-    return { accessToken: result.accessToken, needsReconnect: false, justFlagged: false };
-  }
-
-  if (result.isAuthError) {
-    const error = result.error || 'Token revocado o caducado';
-    const justFlagged = await flagNeedsReconnect(config, error);
-    return { accessToken: null, needsReconnect: true, justFlagged, error };
-  }
-
-  // Transient (network) error: keep the previous state and do not alarm.
-  return {
-    accessToken: null,
-    needsReconnect: config.needsReconnect,
-    justFlagged: false,
-    error: result.error,
-  };
+  return forceRefreshAccessToken(config);
 }
 
 export function isInvoiceAttachment(att: {

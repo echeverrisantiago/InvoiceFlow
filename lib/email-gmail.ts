@@ -178,8 +178,12 @@ export async function fetchNewGmailEmails(
       data: {
         ...(maxInternalDate > 0 ? { lastEmailDate: new Date(maxInternalDate) } : {}),
         lastCheckedAt: new Date(),
+        needsReconnect: false,
+        lastError: null,
+        lastErrorAt: null,
       },
     });
+    config.needsReconnect = false;
 
     console.log(
       `[fetchNewGmailEmails] Completado para ${config.email}: ${processed} procesados, ${skipped} omitidos, ${errors.length} errores`
