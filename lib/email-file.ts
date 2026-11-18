@@ -310,6 +310,21 @@ export function isDocumentAttachment(att: {
 /** Un logo o icono nunca es una factura legible. */
 export const MIN_IMAGE_BYTES = 15 * 1024;
 
+/** Tope de imágenes por correo para no disparar llamadas a la IA. */
+export const MAX_IMAGES_PER_EMAIL = 5;
+
+/**
+ * Imágenes decorativas típicas de firmas y plantillas de correo. No se
+ * descartan por ser imágenes (una factura puede venir pegada en el cuerpo),
+ * sino por el nombre.
+ */
+const DECORATIVE_IMAGE_PATTERN =
+  /logo|signature|banner|spacer|facebook|instagram|linkedin|twitter|whatsapp|tiktok|youtube|(?:^|[\s._-])(firma|icon|icono)(?:[\s._-]|$)/i;
+
+function isDecorativeImageName(filename?: string): boolean {
+  return DECORATIVE_IMAGE_PATTERN.test(filename || '');
+}
+
 /**
  * Extractos y certificados bancarios: no son cuentas por pagar. Se descartan
  * antes de llamar a la IA (suelen venir además protegidos con contraseña).
@@ -330,22 +345,27 @@ export function isBankStatementAttachment(att: {
  * Decide qué adjuntos de un correo deben procesarse como factura.
  *
  * - Descarta extractos/certificados bancarios.
- * - Si el correo trae un documento (PDF/ZIP/XML), las imágenes son decoración
- *   (logos, banners): se ignoran.
- * - Si solo trae imágenes, se aceptan las que tengan tamaño suficiente.
+ * - Los documentos (PDF/ZIP/XML) siempre se procesan.
+ * - Las imágenes se procesan aunque el correo también traiga documentos: una
+ *   factura puede venir pegada en el cuerpo junto a otros archivos. Se filtran
+ *   por tamaño y por nombres obvios de decoración; la IA hace la validación
+ *   final con `isInvoice: false`.
+ * - Se limita el número de imágenes para no disparar llamadas a la IA.
  */
 export function selectInvoiceAttachments<
   T extends { contentType?: string; filename?: string; content?: Buffer },
 >(attachments: T[]): T[] {
-  const hasDocument = attachments.some((att) => isDocumentAttachment(att));
+  let imageCount = 0;
 
   return attachments.filter((att) => {
     if (isBankStatementAttachment(att)) return false;
     if (!isInvoiceAttachment(att)) return false;
 
     if (isImageAttachment(att)) {
-      if (hasDocument) return false;
       if ((att.content?.length ?? 0) < MIN_IMAGE_BYTES) return false;
+      if (isDecorativeImageName(att.filename)) return false;
+      if (imageCount >= MAX_IMAGES_PER_EMAIL) return false;
+      imageCount++;
     }
 
     return true;

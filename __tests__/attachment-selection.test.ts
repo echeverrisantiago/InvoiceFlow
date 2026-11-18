@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  MAX_IMAGES_PER_EMAIL,
   MIN_IMAGE_BYTES,
   selectInvoiceAttachments,
 } from '@/lib/email-file';
@@ -12,7 +13,7 @@ const image = (filename: string, size: number) => ({
 });
 
 describe('selectInvoiceAttachments', () => {
-  it('ignora las imágenes cuando el correo trae un documento', () => {
+  it('procesa imágenes grandes aunque el correo también traiga un documento', () => {
     const zip = {
       filename: 'factura.zip',
       contentType: 'application/zip',
@@ -20,12 +21,16 @@ describe('selectInvoiceAttachments', () => {
     };
 
     const result = selectInvoiceAttachments([
-      image('inline_b64_1.jpg', 50_000),
+      image('ktronix.jpeg', 80_000),
       zip,
-      image('banner.png', 40_000),
+      image('picanha.jpeg', 70_000),
     ]);
 
-    expect(result.map((att) => att.filename)).toEqual(['factura.zip']);
+    expect(result.map((att) => att.filename)).toEqual([
+      'ktronix.jpeg',
+      'factura.zip',
+      'picanha.jpeg',
+    ]);
   });
 
   it('acepta imágenes grandes cuando el correo solo trae imágenes', () => {
@@ -45,16 +50,53 @@ describe('selectInvoiceAttachments', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('con PDF e imágenes solo procesa el PDF', () => {
+  it('con PDF e imágenes procesa el PDF y las imágenes que parecen factura', () => {
     const pdf = {
       filename: 'factura.pdf',
       contentType: 'application/pdf',
       content: Buffer.alloc(1000),
     };
 
-    const result = selectInvoiceAttachments([pdf, image('firma.jpg', 50_000)]);
+    const result = selectInvoiceAttachments([
+      pdf,
+      image('firma.jpg', 50_000),
+      image('factura-escaneada.jpg', 50_000),
+    ]);
 
-    expect(result.map((att) => att.filename)).toEqual(['factura.pdf']);
+    expect(result.map((att) => att.filename)).toEqual([
+      'factura.pdf',
+      'factura-escaneada.jpg',
+    ]);
+  });
+
+  it('descarta imágenes con nombre de logo, firma o banner aunque sean grandes', () => {
+    const result = selectInvoiceAttachments([
+      image('logo-ktronix.jpg', 80_000),
+      image('KtronixLogo.jpeg', 80_000),
+      image('firma digital.png', 50_000),
+      image('banner.png', 40_000),
+      image('ktronix.jpeg', 80_000),
+    ]);
+
+    expect(result.map((att) => att.filename)).toEqual(['ktronix.jpeg']);
+  });
+
+  it('no descarta una factura por una palabra que contenga "firma"', () => {
+    const result = selectInvoiceAttachments([
+      image('confirmacion-pago.jpg', 50_000),
+    ]);
+
+    expect(result.map((att) => att.filename)).toEqual(['confirmacion-pago.jpg']);
+  });
+
+  it('limita la cantidad de imágenes procesadas por correo', () => {
+    const images = Array.from({ length: MAX_IMAGES_PER_EMAIL + 2 }, (_, index) =>
+      image(`factura-${index}.jpg`, 50_000)
+    );
+
+    const result = selectInvoiceAttachments(images);
+
+    expect(result).toHaveLength(MAX_IMAGES_PER_EMAIL);
   });
 
   it('ignora extractos y certificados bancarios', () => {
