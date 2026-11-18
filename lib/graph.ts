@@ -88,8 +88,12 @@ async function graphJson<T>(accessToken: string, path: string): Promise<T> {
 }
 
 /**
- * Query de mensajes de la bandeja de entrada con adjuntos, del más antiguo al
- * más nuevo (así el cursor avanza sin saltarse correos).
+ * Query de mensajes de la bandeja de entrada desde una fecha, del más antiguo
+ * al más nuevo (así el cursor avanza sin saltarse correos).
+ *
+ * No se filtra por `hasAttachments`: Microsoft Graph devuelve `false` en
+ * correos que solo traen imágenes inline (pegadas en el cuerpo), aunque el
+ * endpoint de adjuntos sí las devuelva. Los adjuntos se revisan después.
  */
 export function buildMessagesQuery({
   after,
@@ -99,7 +103,7 @@ export function buildMessagesQuery({
   limit?: number;
 }): string {
   const params = new URLSearchParams({
-    $filter: `receivedDateTime ge ${after.toISOString()} and hasAttachments eq true`,
+    $filter: `receivedDateTime ge ${after.toISOString()}`,
     $select: 'id,receivedDateTime',
     $orderby: 'receivedDateTime asc',
     $top: String(limit),
@@ -114,7 +118,7 @@ export interface GraphMessageRef {
   receivedAt: number;
 }
 
-/** Mensajes con adjuntos desde `after`, en orden ascendente. */
+/** Mensajes desde `after`, en orden ascendente. */
 export async function listGraphMessages({
   accessToken,
   after,

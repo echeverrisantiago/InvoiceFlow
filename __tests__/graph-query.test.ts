@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildMessagesQuery, GraphApiError } from '@/lib/graph';
 
 describe('Microsoft Graph', () => {
-  it('pide mensajes con adjuntos desde una fecha, en orden ascendente', () => {
+  it('pide los mensajes desde una fecha, sin filtrar por hasAttachments', () => {
     const path = buildMessagesQuery({
       after: new Date('2026-10-01T00:00:00.000Z'),
       limit: 50,
@@ -12,8 +12,11 @@ describe('Microsoft Graph', () => {
 
     const params = new URLSearchParams(path.split('?')[1]);
     expect(params.get('$filter')).toBe(
-      'receivedDateTime ge 2026-10-01T00:00:00.000Z and hasAttachments eq true'
+      'receivedDateTime ge 2026-10-01T00:00:00.000Z'
     );
+    // Graph marca hasAttachments=false en correos con imágenes inline; si se
+    // filtra por ese campo, esos correos nunca se revisan.
+    expect(params.get('$filter')).not.toContain('hasAttachments');
     expect(params.get('$orderby')).toBe('receivedDateTime asc');
     expect(params.get('$select')).toBe('id,receivedDateTime');
     expect(params.get('$top')).toBe('50');
